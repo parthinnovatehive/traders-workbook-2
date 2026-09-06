@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+/* Manual (class-based) dark mode so the theme toggle in Phase 4 controls it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Semantic color utilities (bg-bg, text-muted, text-profit, ...)
+ * resolve to the CSS variables defined per-theme below, so a single `.dark`
+ * class on <html> flips the whole palette. Dark is the primary experience.
+ */
+@theme inline {
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --radius-card: 0.75rem;
+}
+
+/* Light theme (default) */
+:root {
+  color-scheme: light;
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --border: #dfe3ea;
+  --text: #0e1420;
+  --muted: #5a6473;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-fg: #ffffff;
+  --profit: #0f7a56;
+  --loss: #c92f26;
+  --warning: #b45309;
+  --info: #0e7490;
+}
+
+/* Dark theme (primary) */
+.dark {
+  color-scheme: dark;
+  --bg: #0a0d14;
+  --surface: #10151f;
+  --surface-2: #171d2a;
+  --border: #232b3a;
+  --text: #e7ecf5;
+  --muted: #8b94a6;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-fg: #06090f;
+  --profit: #1fb37e;
+  --loss: #f0524a;
+  --warning: #f5a623;
+  --info: #22d3ee;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numeric/tabular data reads better with tabular figures. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
