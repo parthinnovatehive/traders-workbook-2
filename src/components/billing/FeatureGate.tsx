@@ -8,7 +8,7 @@ import { canAccessFeature } from '@/lib/entitlements';
 import { useSubscription } from '@/hooks/useBilling';
 import { usePlans } from '@/hooks/usePlans';
 
-const MEMBERSHIP = `${ROUTES.settings}?tab=membership`;
+const MEMBERSHIP = ROUTES.membership;
 
 export function FeatureLock({ title, description }: { title: string; description: string }) {
   return (

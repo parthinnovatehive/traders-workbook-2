@@ -31,7 +31,7 @@ export function UpgradeModal({
           <Button
             onClick={() => {
               onClose();
-              navigate(`${ROUTES.settings}?tab=membership`);
+              navigate(ROUTES.membership);
             }}
           >
             View Membership Plans

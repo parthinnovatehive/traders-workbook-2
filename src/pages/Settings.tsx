@@ -1,31 +1,20 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+
 import { Moon, RotateCcw, Sun } from 'lucide-react';
-import { Button, Card, CardBody, CardHeader, Field, Input, Select, Tabs } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, Field, Input, Select } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { MembershipPanel } from '@/components/billing/MembershipPanel';
+
 import { ACCOUNT_CURRENCIES } from '@/constants/currencies';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { resetLocalData } from '@/services';
 import { toast } from '@/store/toastStore';
 
-const TABS = [
-  { value: 'profile', label: 'Profile' },
-  { value: 'membership', label: 'Membership' },
-];
-
 export default function Settings() {
-  const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'membership' ? 'membership' : 'profile';
-
   return (
     <>
-      <PageHeader title="Settings" subtitle="Manage your profile, membership and preferences.">
-        <Tabs items={TABS} value={tab} onChange={(v) => setParams(v === 'profile' ? {} : { tab: v })} />
-      </PageHeader>
-
-      {tab === 'membership' ? <MembershipPanel /> : <ProfileTab />}
+      <PageHeader title="Settings" subtitle="Manage your profile and preferences." />
+      <ProfileTab />
     </>
   );
 }

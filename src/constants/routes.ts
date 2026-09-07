@@ -17,6 +17,7 @@ export const ROUTES = {
   shame: '/app/hall-of-shame',
   reports: '/app/reports',
   settings: '/app/settings',
+  membership: '/app/membership',
 
   admin: '/admin',
 } as const;

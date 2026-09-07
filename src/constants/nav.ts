@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
   Target,
   TriangleAlert,
+  Sparkles,
 } from 'lucide-react';
 import { ROUTES } from './routes';
 
@@ -30,6 +31,7 @@ export const APP_NAV: NavItem[] = [
   { to: ROUTES.fame, label: 'Hall of Fame', icon: Award },
   { to: ROUTES.shame, label: 'Hall of Shame', icon: TriangleAlert },
   { to: ROUTES.reports, label: 'Reports', icon: FileText },
+  { to: ROUTES.membership, label: 'Membership', icon: Sparkles },
   { to: ROUTES.settings, label: 'Settings', icon: SlidersHorizontal },
 ];
 

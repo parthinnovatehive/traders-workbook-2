@@ -26,6 +26,7 @@ const HallOfFame = lazy(() => import('@/pages/HallOfFame'));
 const HallOfShame = lazy(() => import('@/pages/HallOfShame'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Settings = lazy(() => import('@/pages/Settings'));
+const Membership = lazy(() => import('@/pages/Membership'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -65,6 +66,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.shame, element: suspend(<HallOfShame />) },
       { path: ROUTES.reports, element: suspend(<Reports />) },
       { path: ROUTES.settings, element: suspend(<Settings />) },
+      { path: ROUTES.membership, element: suspend(<Membership />) },
     ],
   },
   {
