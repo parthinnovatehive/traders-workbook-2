@@ -1,16 +1,28 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import type { Market, MistakeCode, PsychCode, Trade, TradeDirection, TradeDraft, TradingMode } from '@/types';
+import type {
+  Market,
+  MistakeCode,
+  PsychCode,
+  Trade,
+  TradeDirection,
+  TradeDraft,
+  TradingMode,
+} from '@/types';
 import { MISTAKE_CODES, MISTAKE_LABELS, PSYCH_CODES, PSYCH_LABELS } from '@/constants/journal';
 import {
-  FOREX_PAIRS,
   getForexSpec,
   LOT_TYPES,
-  LOT_TYPE_LABELS,
-  LOT_UNITS,
+  lotTypeLabel,
+  unitsPerLot,
   type LotType,
 } from '@/constants/instruments';
-import { getIndianSpec, INDIAN_INSTRUMENTS } from '@/constants/indianInstruments';
-import { ACCOUNT_CURRENCIES } from '@/constants/currencies';
+import {
+  getIndianSpec,
+  lotSizeFor,
+  marketForSegment,
+  segmentsFor,
+  type IndianSegment,
+} from '@/constants/indianInstruments';
 import {
   calculateForexPipValue,
   calculateLotSize,
@@ -22,19 +34,25 @@ import { tradeSchema } from '@/schemas/trade';
 import { TradeLimitError } from '@/services';
 import { useCreateTrade, useUpdateTrade } from '@/hooks/useTrades';
 import { useStrategies } from '@/hooks/useStrategies';
-import { useAuthStore } from '@/store/authStore';
+import { useInstrumentOptions } from '@/hooks/useInstruments';
+import { useTradingAccount } from '@/hooks/useTradingAccounts';
 import { useUiStore } from '@/store/uiStore';
 import { toast } from '@/store/toastStore';
 import { todayISO } from '@/utils/date';
 import { formatCurrency, formatR } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
+import { InstrumentPicker } from './InstrumentPicker';
 
 interface FormState {
   symbol: string;
   direction: TradeDirection;
-  accountCurrency: string;
+  segment: IndianSegment;
   lotType: LotType;
+  /** Blank = use the instrument's spec value. */
+  lotSizeOverride: string;
+  /** Blank = use the FX provider's rate. */
+  rateOverride: string;
   riskPct: string;
   entryDate: string;
   entryTime: string;
@@ -64,12 +82,15 @@ const num = (s: string): number | null => {
 const toggle = <T,>(list: T[], value: T): T[] =>
   list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
-function initialState(trade: Trade | undefined, mode: TradingMode, defaultCcy: string): FormState {
+function initialState(trade: Trade | undefined, mode: TradingMode): FormState {
+  const spec = trade && mode === 'indian' ? getIndianSpec(trade.symbol) : null;
   return {
     symbol: trade?.symbol ?? (mode === 'forex' ? 'EUR/USD' : 'NIFTY'),
     direction: trade?.direction ?? 'long',
-    accountCurrency: trade?.accountCurrency ?? defaultCcy,
+    segment: (trade?.segment as IndianSegment) ?? (spec?.segment === 'INDEX' ? 'FUT' : 'EQ'),
     lotType: (trade?.lotType as LotType) ?? 'standard',
+    lotSizeOverride: '',
+    rateOverride: trade?.conversionRate != null ? String(trade.conversionRate) : '',
     riskPct: '1',
     entryDate: trade?.entryDate ?? todayISO(),
     entryTime: trade?.entryTime ?? '',
@@ -90,6 +111,13 @@ function initialState(trade: Trade | undefined, mode: TradingMode, defaultCcy: s
   };
 }
 
+const SEGMENT_LABELS: Record<IndianSegment, string> = {
+  INDEX: 'Index',
+  EQ: 'Equity (cash)',
+  FUT: 'Futures',
+  OPT: 'Options',
+};
+
 interface Props {
   trade?: Trade;
   variant?: 'full' | 'quick';
@@ -99,38 +127,98 @@ interface Props {
 export function TradeForm({ trade, variant = 'full', onDone }: Props) {
   const storeMode = useUiStore((s) => s.tradingMode);
   const mode: TradingMode = trade?.tradingMode ?? storeMode;
-  const user = useAuthStore((s) => s.user);
-  const defaultCcy = user?.baseCurrency ?? 'USD';
+  const account = useTradingAccount(mode);
 
-  const [form, setForm] = useState<FormState>(() => initialState(trade, mode, defaultCcy));
+  const [form, setForm] = useState<FormState>(() => initialState(trade, mode));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const strategies = useStrategies();
   const createTrade = useCreateTrade();
   const updateTrade = useUpdateTrade();
+  const { options } = useInstrumentOptions(mode);
   const isFull = variant === 'full';
   const isForex = mode === 'forex';
+
+  // The account the trade settles into. Indian is always INR — there is no
+  // per-trade currency picker any more, because mixing currencies inside one
+  // book made every aggregate on the dashboard meaningless.
+  const ccy = account.currency;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  /** Instrument-derived values (specs + FX conversion). */
+  /** The selected instrument, from the server catalogue where available. */
+  const instrument = useMemo(
+    () => options.find((o) => o.symbol === form.symbol),
+    [options, form.symbol],
+  );
+
+  /** Segments this instrument can actually be traded in. */
+  const availableSegments = useMemo(() => {
+    if (isForex) return [];
+    const spec = instrument
+      ? { segment: instrument.segment ?? 'EQ', hasFno: instrument.hasFno }
+      : getIndianSpec(form.symbol);
+    return spec ? segmentsFor(spec) : (['EQ'] as IndianSegment[]);
+  }, [isForex, instrument, form.symbol]);
+
+  const segment: IndianSegment = availableSegments.includes(form.segment)
+    ? form.segment
+    : (availableSegments[0] ?? 'EQ');
+
+  /** Instrument-derived values (specs + FX conversion), with user overrides. */
   const derived = useMemo(() => {
     const fx = getFxProvider();
+
     if (isForex) {
       const spec = getForexSpec(form.symbol);
-      const lotSize = LOT_UNITS[form.lotType] ?? LOT_UNITS.standard;
-      const quote = spec?.quote ?? 'USD';
-      const base = spec?.base;
-      const pipSize = spec?.pipSize ?? 0.0001;
-      const conversionRate = fx.getRate(quote, form.accountCurrency);
-      return { lotSize, quote, base, pipSize, conversionRate, market: 'Forex' as Market, exchange: undefined, segment: undefined };
+      const contractSize = instrument?.contractSize ?? spec?.contractSize ?? 100_000;
+      const quote = instrument?.quoteCurrency ?? spec?.quote ?? 'USD';
+      const base = instrument?.baseCurrency ?? spec?.base;
+      const pipSize = instrument?.pipSize ?? spec?.pipSize ?? 0.0001;
+      const specLotSize = unitsPerLot(contractSize, form.lotType);
+      return {
+        contractSize,
+        lotSize: num(form.lotSizeOverride) ?? specLotSize,
+        specLotSize,
+        quote,
+        base,
+        pipSize,
+        providerRate: fx.getRate(quote, ccy),
+        market: 'Forex' as Market,
+        exchange: undefined as string | undefined,
+        segment: undefined as string | undefined,
+      };
     }
+
     const spec = getIndianSpec(form.symbol);
-    const lotSize = spec?.lotSize ?? 1;
-    const conversionRate = fx.getRate('INR', form.accountCurrency);
-    const market: Market = spec?.segment === 'INDEX' ? 'Index' : spec?.segment === 'EQ' ? 'Equity' : 'Futures';
-    return { lotSize, quote: 'INR', base: undefined, pipSize: spec?.tickSize ?? 0.05, conversionRate, market, exchange: spec?.exchange, segment: spec?.segment };
-  }, [isForex, form.symbol, form.lotType, form.accountCurrency]);
+    const contractLot = instrument?.lotSize ?? spec?.lotSize ?? 1;
+    const specLotSize = lotSizeFor({ lotSize: contractLot }, segment);
+    return {
+      contractSize: contractLot,
+      lotSize: num(form.lotSizeOverride) ?? specLotSize,
+      specLotSize,
+      quote: 'INR',
+      base: undefined as string | undefined,
+      pipSize: instrument?.tickSize ?? spec?.tickSize ?? 0.05,
+      providerRate: fx.getRate('INR', ccy),
+      market: marketForSegment(segment) as Market,
+      exchange: instrument?.exchange ?? spec?.exchange,
+      segment: segment as string,
+    };
+  }, [isForex, instrument, form.symbol, form.lotType, form.lotSizeOverride, segment, ccy]);
+
+  /**
+   * The rate stored on the trade. The bundled FX provider ships static
+   * development rates, so anything it returns for a pair that is not already in
+   * the account currency is an estimate — the user can type the rate their
+   * broker actually filled at, and that is what the engine uses.
+   */
+  const conversionRate = num(form.rateOverride) ?? derived.providerRate;
+  const rateIsEstimated = derived.quote !== ccy && num(form.rateOverride) == null;
+
+  /** Cash equity is quoted in shares; everything else in lots. */
+  const isShareQuantity = !isForex && segment === 'EQ';
+  const quantityLabel = isShareQuantity ? 'Quantity (Shares)' : 'Quantity (Lots)';
 
   const entry = num(form.entryPrice);
   const stop = num(form.stopLoss);
@@ -148,30 +236,35 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
           stopLoss: stop,
           target: num(form.target),
           charges: num(form.charges) ?? 0,
-          conversionRate: derived.conversionRate,
+          conversionRate,
         },
-        { startingCapital: user?.startingCapital },
+        { startingCapital: account.startingCapital },
       ),
-    [form, entry, stop, qty, derived, user?.startingCapital],
+    [form, entry, stop, qty, derived.lotSize, conversionRate, account.startingCapital],
   );
 
   const positionSize = qty != null && qty > 0 ? qty * derived.lotSize : null;
-  const pipDistance = isForex && entry != null && stop != null ? calculatePipDistance(entry, stop, derived.pipSize) : null;
-  const pipValue = isForex && positionSize != null ? calculateForexPipValue(derived.pipSize, positionSize, derived.conversionRate) : null;
+  const pipDistance =
+    isForex && entry != null && stop != null
+      ? calculatePipDistance(entry, stop, derived.pipSize)
+      : null;
+  const pipValue =
+    isForex && positionSize != null
+      ? calculateForexPipValue(derived.pipSize, positionSize, conversionRate)
+      : null;
+
   const suggestedLots = useMemo(() => {
     if (!isForex) return null;
     const riskPct = num(form.riskPct);
-    if (!riskPct || !user?.startingCapital || pipDistance == null || pipDistance <= 0) return null;
+    if (!riskPct || !account.startingCapital || pipDistance == null || pipDistance <= 0) return null;
     return calculateLotSize({
-      riskAmount: (user.startingCapital * riskPct) / 100,
+      riskAmount: (account.startingCapital * riskPct) / 100,
       stopPips: pipDistance,
       pipSize: derived.pipSize,
       unitsPerLot: derived.lotSize,
-      quoteToAccountRate: derived.conversionRate,
+      quoteToAccountRate: conversionRate,
     });
-  }, [isForex, form.riskPct, user?.startingCapital, pipDistance, derived]);
-
-  const ccy = form.accountCurrency;
+  }, [isForex, form.riskPct, account.startingCapital, pipDistance, derived, conversionRate]);
 
   const submit = () => {
     const parsed = tradeSchema.safeParse({
@@ -210,7 +303,7 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
     const v = parsed.data;
     const draft: TradeDraft = {
       tradingMode: mode,
-      symbol: isForex ? v.symbol.toUpperCase() : v.symbol.toUpperCase(),
+      symbol: v.symbol.toUpperCase(),
       market: v.market,
       direction: v.direction,
       baseCurrency: derived.base,
@@ -218,7 +311,7 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
       lotType: isForex ? form.lotType : undefined,
       exchange: derived.exchange,
       segment: derived.segment,
-      accountCurrency: form.accountCurrency,
+      accountCurrency: ccy,
       entryDate: v.entryDate,
       entryTime: v.entryTime,
       exitDate: v.exitPrice != null ? (v.exitDate ?? v.entryDate) : v.exitDate,
@@ -230,7 +323,7 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
       stopLoss: v.stopLoss,
       target: v.target,
       charges: v.charges,
-      conversionRate: derived.conversionRate,
+      conversionRate,
       pipDistance: pipDistance ?? undefined,
       pipValue: pipValue ?? undefined,
       strategyId: v.strategyId,
@@ -271,32 +364,25 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
     <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="flex flex-col gap-5">
       {/* Instrument row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {isForex ? (
-          <Field label="Currency Pair" required error={errors.symbol} className="col-span-2">
-            <Input
-              value={form.symbol}
-              onChange={(e) => set('symbol', e.target.value.toUpperCase())}
-              placeholder="EUR/USD"
-              list="fx-pairs"
-              autoFocus
-            />
-            <datalist id="fx-pairs">
-              {FOREX_PAIRS.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-          </Field>
-        ) : (
-          <Field label="Instrument" required error={errors.symbol} className="col-span-2">
-            <Select value={form.symbol} onChange={(e) => set('symbol', e.target.value)}>
-              {INDIAN_INSTRUMENTS.map((i) => (
-                <option key={i.symbol} value={i.symbol}>
-                  {i.symbol} — {i.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
+        <Field
+          label={isForex ? 'Currency Pair' : 'Instrument'}
+          required
+          error={errors.symbol}
+          className="col-span-2"
+          hint="Click the star to pin an instrument to the top"
+        >
+          <InstrumentPicker
+            tradingMode={mode}
+            value={form.symbol}
+            onChange={(symbol) => {
+              set('symbol', symbol);
+              // A new instrument invalidates a lot-size override typed for the
+              // previous one.
+              set('lotSizeOverride', '');
+            }}
+            autoFocus
+          />
+        </Field>
 
         <Field label="Direction">
           <div className="flex overflow-hidden rounded-lg border border-border">
@@ -318,14 +404,12 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
           </div>
         </Field>
 
-        <Field label="Account Currency">
-          <Select value={form.accountCurrency} onChange={(e) => set('accountCurrency', e.target.value)}>
-            {ACCOUNT_CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
+        {/* Read-only: the account's currency, not a per-trade choice. */}
+        <Field
+          label="Account Currency"
+          hint={isForex ? 'From your Forex account' : 'Indian trades settle in INR'}
+        >
+          <Input value={ccy} readOnly disabled className="bg-surface-2 text-muted" />
         </Field>
       </div>
 
@@ -336,34 +420,63 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
             <Select value={form.lotType} onChange={(e) => set('lotType', e.target.value as LotType)}>
               {LOT_TYPES.map((lt) => (
                 <option key={lt} value={lt}>
-                  {LOT_TYPE_LABELS[lt]}
+                  {lotTypeLabel(lt, derived.contractSize)}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field label="Quantity (Lots)" required error={errors.quantity}>
+          <Field label={quantityLabel} required error={errors.quantity}>
             <Input type="number" step="any" inputMode="decimal" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} />
           </Field>
           <Field label="Risk %" hint="For suggested lot size">
             <Input type="number" step="any" value={form.riskPct} onChange={(e) => set('riskPct', e.target.value)} />
           </Field>
-          <Field label="Lot Size (units)">
-            <Input value={derived.lotSize.toLocaleString()} readOnly className="bg-surface-2 text-muted" />
+          <Field label="Units per Lot" hint={`Spec: ${derived.specLotSize.toLocaleString()}`}>
+            <Input
+              type="number"
+              step="any"
+              value={form.lotSizeOverride}
+              placeholder={String(derived.specLotSize)}
+              onChange={(e) => set('lotSizeOverride', e.target.value)}
+            />
           </Field>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Field label="Exchange">
-            <Input value={derived.exchange ?? '—'} readOnly className="bg-surface-2 text-muted" />
-          </Field>
           <Field label="Segment">
-            <Input value={derived.segment ?? '—'} readOnly className="bg-surface-2 text-muted" />
+            <Select
+              value={segment}
+              onChange={(e) => {
+                set('segment', e.target.value as IndianSegment);
+                set('lotSizeOverride', '');
+              }}
+            >
+              {availableSegments.map((s) => (
+                <option key={s} value={s}>
+                  {SEGMENT_LABELS[s]}
+                </option>
+              ))}
+            </Select>
           </Field>
-          <Field label="Quantity (Lots)" required error={errors.quantity}>
+          <Field label="Exchange">
+            <Input value={derived.exchange ?? '—'} readOnly disabled className="bg-surface-2 text-muted" />
+          </Field>
+          <Field label={quantityLabel} required error={errors.quantity}>
             <Input type="number" step="any" inputMode="decimal" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} />
           </Field>
-          <Field label="Lot Size">
-            <Input value={derived.lotSize.toLocaleString()} readOnly className="bg-surface-2 text-muted" />
+          <Field
+            label="Lot Size"
+            hint={isShareQuantity ? 'Cash equity — 1 share' : `Spec: ${derived.specLotSize.toLocaleString()}`}
+          >
+            <Input
+              type="number"
+              step="any"
+              value={form.lotSizeOverride}
+              placeholder={String(derived.specLotSize)}
+              onChange={(e) => set('lotSizeOverride', e.target.value)}
+              disabled={isShareQuantity}
+              className={cn(isShareQuantity && 'bg-surface-2 text-muted')}
+            />
           </Field>
         </div>
       )}
@@ -388,6 +501,22 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
         <Field label="Charges" hint={ccy} error={errors.charges}>
           <Input type="number" step="any" inputMode="decimal" value={form.charges} onChange={(e) => set('charges', e.target.value)} />
         </Field>
+        {derived.quote !== ccy && (
+          <Field
+            label={`Rate ${derived.quote}→${ccy}`}
+            hint={rateIsEstimated ? 'Estimated — enter your fill rate' : 'Your rate'}
+          >
+            <Input
+              type="number"
+              step="any"
+              inputMode="decimal"
+              value={form.rateOverride}
+              placeholder={derived.providerRate.toFixed(4)}
+              onChange={(e) => set('rateOverride', e.target.value)}
+              className={cn(rateIsEstimated && 'border-warning/50')}
+            />
+          </Field>
+        )}
         <Field label="Strategy">
           <Select value={form.strategyId} onChange={(e) => set('strategyId', e.target.value)}>
             <option value="">— None —</option>
@@ -445,7 +574,10 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
           Calculated — read only ({ccy})
         </p>
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          <Summary label="Position Size" value={positionSize == null ? 'N/A' : positionSize.toLocaleString()} />
+          <Summary
+            label={isShareQuantity ? 'Shares' : 'Position Size'}
+            value={positionSize == null ? 'N/A' : positionSize.toLocaleString()}
+          />
           {isForex && <Summary label="Pip Distance" value={pipDistance == null ? 'N/A' : `${pipDistance}`} />}
           {isForex && <Summary label="Pip Value" value={pipValue == null ? 'N/A' : formatCurrency(pipValue, ccy)} />}
           <Summary label="Risk" value={metrics.risk == null ? 'N/A' : formatCurrency(metrics.risk, ccy)} />
@@ -457,6 +589,12 @@ export function TradeForm({ trade, variant = 'full', onDone }: Props) {
           <Summary label="ROI" value={metrics.roi == null ? 'N/A' : `${metrics.roi.toFixed(2)}%`} tone={metrics.roi} />
           {isForex && <Summary label="Suggested Lots" value={suggestedLots == null ? 'N/A' : suggestedLots.toFixed(2)} />}
         </div>
+        {rateIsEstimated && (
+          <p className="mt-3 text-xs text-muted">
+            These figures use an estimated {derived.quote}→{ccy} rate of{' '}
+            {derived.providerRate.toFixed(4)}. Enter your broker&apos;s rate above for exact P&amp;L.
+          </p>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2">

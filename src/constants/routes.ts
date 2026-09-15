@@ -6,9 +6,12 @@ export const ROUTES = {
   faq: '/faq',
   login: '/login',
   register: '/register',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
 
   app: '/app',
   journal: '/app/journal',
+  calendar: '/app/calendar',
   analytics: '/app/analytics',
   risk: '/app/risk',
   strategies: '/app/strategies',
@@ -20,4 +23,15 @@ export const ROUTES = {
   membership: '/app/membership',
 
   admin: '/admin',
+  adminUsers: '/admin/users',
+  adminSubscriptions: '/admin/subscriptions',
+  adminPlans: '/admin/plans',
+  adminInstruments: '/admin/instruments',
+  adminFeedback: '/admin/feedback',
+  adminAudit: '/admin/audit',
+
+  terms: '/terms',
+  privacy: '/privacy',
+  refunds: '/refunds',
+  contact: '/contact',
 } as const;

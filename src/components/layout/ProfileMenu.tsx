@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Shield, User as UserIcon } from 'lucide-react';
+import { LogOut, MessageSquarePlus, Shield, User as UserIcon } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
+import { FeedbackModal } from '@/components/feedback/FeedbackModal';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import { cn } from '@/utils/cn';
@@ -11,6 +12,7 @@ export function ProfileMenu() {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,6 +43,11 @@ export function ProfileMenu() {
             <p className="truncate text-xs text-muted">{user.email}</p>
           </div>
           <MenuButton icon={UserIcon} label="Settings" onClick={() => { setOpen(false); navigate(ROUTES.settings); }} />
+          <MenuButton
+            icon={MessageSquarePlus}
+            label="Send feedback"
+            onClick={() => { setOpen(false); setFeedbackOpen(true); }}
+          />
           {user.role === 'admin' && (
             <MenuButton icon={Shield} label="Admin Panel" onClick={() => { setOpen(false); navigate(ROUTES.admin); }} />
           )}
@@ -57,6 +64,8 @@ export function ProfileMenu() {
           />
         </div>
       )}
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }

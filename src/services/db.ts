@@ -1,4 +1,16 @@
-import type { Plan, RiskSetting, Strategy, Subscription, Trade, User } from '@/types';
+import type {
+  AuditEntry,
+  Favourite,
+  Feedback,
+  Instrument,
+  Plan,
+  RiskSetting,
+  Strategy,
+  Subscription,
+  Trade,
+  TradingAccount,
+  User,
+} from '@/types';
 
 /** Mock credential store (local dev only — never how real auth would work). */
 export interface Credential {
@@ -11,12 +23,24 @@ export interface Database {
   version: number;
   users: User[];
   credentials: Credential[];
+  tradingAccounts: TradingAccount[];
   trades: Trade[];
   strategies: Strategy[];
   riskSettings: RiskSetting[];
   plans: Plan[];
   subscriptions: Subscription[];
+  instruments: Instrument[];
+  favourites: Favourite[];
+  feedback: Feedback[];
+  auditLog: AuditEntry[];
 }
+
+/**
+ * Bumped whenever the shape changes. `local.ts` discards any stored database
+ * with a different version and rebuilds from the seed, so a developer's stale
+ * browser data can never crash the app after a schema change.
+ */
+export const DB_VERSION = 4;
 
 const KEY = 'twb.db.v1';
 

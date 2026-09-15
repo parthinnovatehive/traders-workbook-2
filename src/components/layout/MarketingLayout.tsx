@@ -12,6 +12,13 @@ const LINKS = [
   { to: ROUTES.faq, label: 'FAQ' },
 ];
 
+const LEGAL_LINKS = [
+  { to: ROUTES.terms, label: 'Terms' },
+  { to: ROUTES.privacy, label: 'Privacy' },
+  { to: ROUTES.refunds, label: 'Refunds' },
+  { to: ROUTES.contact, label: 'Contact' },
+];
+
 export function MarketingLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-bg">
@@ -55,12 +62,26 @@ export function MarketingLayout() {
       </main>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-muted sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
+        <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+          <div className="flex flex-col items-center justify-between gap-4 text-sm text-muted sm:flex-row">
             <Brand />
+            <nav className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs">
+              {LEGAL_LINKS.map((l) => (
+                <Link key={l.to} to={l.to} className="hover:text-text">
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
+            <p className="text-xs">© {new Date().getFullYear()} Trader&apos;s Workbook</p>
           </div>
-          <p>Turn every trade into data. Turn your data into discipline.</p>
-          <p className="text-xs">© {new Date().getFullYear()} Trader&apos;s Workbook</p>
+
+          {/* Required context whenever performance figures are shown to retail
+              traders — and what a payment gateway will look for at onboarding. */}
+          <p className="mt-6 border-t border-border pt-4 text-center text-xs leading-relaxed text-muted">
+            Trader&apos;s Workbook is a journaling and analytics tool. It is not investment advice
+            and not a recommendation to buy or sell any instrument. We are not a registered
+            investment adviser. Trading involves substantial risk of loss.
+          </p>
         </div>
       </footer>
     </div>

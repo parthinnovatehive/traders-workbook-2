@@ -16,7 +16,7 @@ import { TagPerformanceTable } from '@/components/analytics/TagPerformanceTable'
 import { FeatureGate } from '@/components/billing/FeatureGate';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { filterTradesByRange } from '@/hooks/useDateFilter';
-import { formatCurrency, formatPercent, formatR } from '@/utils/format';
+import { formatCompactCurrency, formatCurrency, formatPercent, formatR } from '@/utils/format';
 import { downloadText, tradesToCsv } from '@/utils/export';
 import { toast } from '@/store/toastStore';
 
@@ -103,12 +103,28 @@ export default function Reports() {
         </Card>
       ) : (
         <>
+          {/* Compact figures (K/M or L/Cr by currency) so a large P&L cannot
+              overflow its card; the exact value stays in the hover title. */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <MetricCard label="Net P&L" value={formatCurrency(m.netPnl, currency)} tone={m.netPnl >= 0 ? 'profit' : 'loss'} />
+            <MetricCard
+              label="Net P&L"
+              value={formatCompactCurrency(m.netPnl, currency)}
+              title={formatCurrency(m.netPnl, currency)}
+              tone={m.netPnl >= 0 ? 'profit' : 'loss'}
+            />
             <MetricCard label="Win Rate" value={formatPercent(m.winRate)} />
             <MetricCard label="Avg R" value={formatR(m.averageR)} tone={(m.averageR ?? 0) >= 0 ? 'profit' : 'loss'} />
-            <MetricCard label="Expectancy" value={m.expectancy == null ? 'N/A' : formatCurrency(m.expectancy, currency)} />
-            <MetricCard label="Max DD" value={m.maxDrawdown === 0 ? '—' : `-${formatCurrency(m.maxDrawdown, currency, { compact: true })}`} tone={m.maxDrawdown > 0 ? 'loss' : 'neutral'} />
+            <MetricCard
+              label="Expectancy"
+              value={formatCompactCurrency(m.expectancy, currency)}
+              title={formatCurrency(m.expectancy, currency)}
+            />
+            <MetricCard
+              label="Max DD"
+              value={m.maxDrawdown === 0 ? '—' : `-${formatCompactCurrency(m.maxDrawdown, currency)}`}
+              title={m.maxDrawdown === 0 ? undefined : formatCurrency(m.maxDrawdown, currency)}
+              tone={m.maxDrawdown > 0 ? 'loss' : 'neutral'}
+            />
             <MetricCard label="ROI" value={formatPercent(m.roi)} tone={(m.roi ?? 0) >= 0 ? 'profit' : 'loss'} />
           </div>
 

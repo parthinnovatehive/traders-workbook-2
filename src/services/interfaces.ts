@@ -1,29 +1,64 @@
 import type {
+  AdminOverviewStats,
+  AdminUserRow,
+  AuditEntry,
+  Favourite,
+  Feedback,
+  FeedbackDraft,
+  FeedbackPatch,
+  FeedbackWithAuthor,
+  Instrument,
   Plan,
   RiskSetting,
+  SignupPoint,
   Strategy,
   Subscription,
   Trade,
   TradeDraft,
+  TradingAccount,
+  TradingAccountPatch,
+  TradingMode,
   User,
 } from '@/types';
 
+/** The fields an admin may correct on an instrument (lot sizes drift). */
+export type InstrumentPatch = Partial<
+  Pick<Instrument, 'lotSize' | 'contractSize' | 'tickSize' | 'pipSize' | 'isActive' | 'name'>
+>;
+
+/**
+ * Registration now opens BOTH trading accounts up front: a Forex account in the
+ * currency the trader picks, and an Indian account that is always INR.
+ */
 export interface RegisterInput {
   email: string;
   password: string;
   displayName: string;
-  baseCurrency: string;
-  startingCapital: number;
+  phone?: string;
+  forexCurrency: string;
+  forexStartingCapital: number;
+  indianStartingCapital: number;
 }
 
-export type ProfilePatch = Partial<Pick<User, 'displayName' | 'baseCurrency' | 'startingCapital'>>;
+export type ProfilePatch = Partial<Pick<User, 'displayName' | 'phone'>>;
 
 export interface IAuthService {
   getCurrentUser(): Promise<User | null>;
   login(email: string, password: string): Promise<User>;
-  register(input: RegisterInput): Promise<User>;
+  /**
+   * Returns null when the project requires email confirmation — there is no
+   * session until the user clicks the link, so the UI must say so rather than
+   * navigating into the app.
+   */
+  register(input: RegisterInput): Promise<User | null>;
   logout(): Promise<void>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<User>;
+  /** Emails a password-reset link. Never reveals whether the address exists. */
+  requestPasswordReset(email: string): Promise<void>;
+  /** Sets a new password for the user in the current (recovery) session. */
+  updatePassword(newPassword: string): Promise<void>;
+  /** Subscribe to sign-in/sign-out happening elsewhere (another tab, token expiry). */
+  onAuthStateChange(handler: (user: User | null) => void): () => void;
 }
 
 export interface ITradeRepository {
@@ -55,9 +90,58 @@ export interface IPlanRepository {
   update(id: string, patch: Partial<Omit<Plan, 'id' | 'code'>>): Promise<Plan>;
 }
 
+/** Both of a user's funded accounts (Forex + Indian). */
+export interface ITradingAccountRepository {
+  list(userId: string): Promise<TradingAccount[]>;
+  update(
+    userId: string,
+    tradingMode: TradingMode,
+    patch: TradingAccountPatch,
+  ): Promise<TradingAccount>;
+}
+
+/** The instrument master. Public catalogue — cached hard on the client. */
+export interface IInstrumentRepository {
+  list(tradingMode?: TradingMode): Promise<Instrument[]>;
+}
+
+export interface IFavouriteRepository {
+  list(userId: string): Promise<Favourite[]>;
+  add(userId: string, tradingMode: TradingMode, symbol: string): Promise<Favourite>;
+  remove(userId: string, tradingMode: TradingMode, symbol: string): Promise<void>;
+}
+
+export interface IFeedbackRepository {
+  /** The signed-in user's own submissions. */
+  listMine(userId: string): Promise<Feedback[]>;
+  submit(userId: string, draft: FeedbackDraft): Promise<Feedback>;
+}
+
+/**
+ * Admin surface. Deliberately exposes NO trade data — not P&L, not positions,
+ * not individual trades. Only counts and aggregates. RLS enforces this too:
+ * there is no admin-read policy on `trades`, and the statistics come from
+ * SECURITY DEFINER functions that return counts and dates only.
+ */
 export interface IAdminRepository {
-  users(): Promise<User[]>;
+  overview(): Promise<AdminOverviewStats>;
+  signupSeries(days?: number): Promise<SignupPoint[]>;
+  /** The user directory: profile + plan + trade COUNT. */
+  userRows(): Promise<AdminUserRow[]>;
+  setUserRole(userId: string, role: 'user' | 'admin'): Promise<void>;
+  setUserSuspended(userId: string, suspended: boolean, reason?: string): Promise<void>;
+  setSubscription(
+    userId: string,
+    planId: string,
+    status?: string,
+    months?: number,
+  ): Promise<void>;
   subscriptions(): Promise<Subscription[]>;
+  feedback(): Promise<FeedbackWithAuthor[]>;
+  updateFeedback(id: string, patch: FeedbackPatch): Promise<Feedback>;
+  /** Instrument master maintenance — how lot sizes get corrected without a deploy. */
+  updateInstrument(id: string, patch: InstrumentPatch): Promise<Instrument>;
+  auditLog(limit?: number): Promise<AuditEntry[]>;
 }
 
 export interface IBillingRepository {
@@ -75,6 +159,10 @@ export interface Api {
   strategies: IStrategyRepository;
   risk: IRiskRepository;
   plans: IPlanRepository;
+  accounts: ITradingAccountRepository;
+  instruments: IInstrumentRepository;
+  favourites: IFavouriteRepository;
+  feedback: IFeedbackRepository;
   admin: IAdminRepository;
   billing: IBillingRepository;
 }
@@ -85,5 +173,14 @@ export class TradeLimitError extends Error {
   constructor(message = "You've reached your free trade limit.") {
     super(message);
     this.name = 'TradeLimitError';
+  }
+}
+
+/** Thrown when a sign-up succeeded but the email still needs confirming. */
+export class EmailConfirmationRequiredError extends Error {
+  readonly code = 'EMAIL_CONFIRMATION_REQUIRED';
+  constructor(message = 'Check your inbox to confirm your email address.') {
+    super(message);
+    this.name = 'EmailConfirmationRequiredError';
   }
 }

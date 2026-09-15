@@ -5,7 +5,7 @@ import { ROUTES } from '@/constants/routes';
 import { Button, Field, Input } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
-import { DEMO_EMAIL, DEMO_PASSWORD } from '@/services';
+import { DEMO_EMAIL, DEMO_PASSWORD, isLocalDataSource } from '@/services';
 import { AuthShell } from './AuthShell';
 
 export default function Login() {
@@ -54,21 +54,32 @@ export default function Login() {
         <Field label="Password" required>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
         </Field>
+        <div className="flex justify-end">
+          <Link to={ROUTES.forgotPassword} className="text-xs text-muted hover:text-primary hover:underline">
+            Forgot your password?
+          </Link>
+        </div>
         <Button type="submit" className="w-full" loading={busy}>
           Log in
         </Button>
       </form>
 
-      <div className="my-4 flex items-center gap-3 text-xs text-muted">
-        <span className="h-px flex-1 bg-border" />
-        or
-        <span className="h-px flex-1 bg-border" />
-      </div>
+      {/* The demo account only exists in the local mock repository — against a
+          real Supabase project it would be a shared, publicly-known login. */}
+      {isLocalDataSource && (
+        <>
+          <div className="my-4 flex items-center gap-3 text-xs text-muted">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
 
-      <Button variant="outline" className="w-full" onClick={() => void submit(DEMO_EMAIL, DEMO_PASSWORD)} loading={busy}>
-        <Sparkles className="h-4 w-4" /> Explore the demo account
-      </Button>
-      <p className="mt-3 text-center text-xs text-muted">Loaded with sample trades so you can try every feature.</p>
+          <Button variant="outline" className="w-full" onClick={() => void submit(DEMO_EMAIL, DEMO_PASSWORD)} loading={busy}>
+            <Sparkles className="h-4 w-4" /> Explore the demo account
+          </Button>
+          <p className="mt-3 text-center text-xs text-muted">Loaded with sample trades so you can try every feature.</p>
+        </>
+      )}
     </AuthShell>
   );
 }

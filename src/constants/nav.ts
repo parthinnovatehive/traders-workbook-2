@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  CalendarDays,
   FileText,
   LayoutDashboard,
   type LucideIcon,
@@ -24,6 +25,7 @@ export interface NavItem {
 export const APP_NAV: NavItem[] = [
   { to: ROUTES.app, label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: ROUTES.journal, label: 'Trade Journal', icon: BookOpen },
+  { to: ROUTES.calendar, label: 'Calendar', icon: CalendarDays },
   { to: ROUTES.analytics, label: 'Analytics', icon: BarChart3 },
   { to: ROUTES.risk, label: 'Risk Management', icon: ShieldAlert },
   { to: ROUTES.strategies, label: 'Strategies', icon: Target },
@@ -39,6 +41,6 @@ export const APP_NAV: NavItem[] = [
 export const MOBILE_NAV: NavItem[] = [
   { to: ROUTES.app, label: 'Home', icon: LayoutDashboard, end: true },
   { to: ROUTES.journal, label: 'Journal', icon: BookOpen },
+  { to: ROUTES.calendar, label: 'Calendar', icon: CalendarDays },
   { to: ROUTES.analytics, label: 'Analytics', icon: BarChart3 },
-  { to: ROUTES.risk, label: 'Risk', icon: ShieldAlert },
 ];

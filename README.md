@@ -63,9 +63,9 @@ client bundle — **never** put secrets or service-role keys in them.
 
 | Variable                 | Purpose                                             |
 | ------------------------ | --------------------------------------------------- |
-| `VITE_DATA_SOURCE`       | `local` (mock, default) or `api` (real backend)     |
-| `VITE_API_URL`           | Backend base URL (when `VITE_DATA_SOURCE=api`)      |
-| `VITE_SUPABASE_URL`      | Supabase project URL (optional backend)             |
+| `VITE_DATA_SOURCE`       | `local` (mock, default) or `supabase` (real backend)|
+| `VITE_API_URL`           | Backend base URL (reserved, future use)             |
+| `VITE_SUPABASE_URL`      | Supabase project URL (when `VITE_DATA_SOURCE=supabase`) |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key — requires RLS on every table     |
 
 ## Architecture
@@ -86,12 +86,28 @@ Calculation engine (pure, tested)   ← single source of truth for all math
 - **Derive, don't store:** metrics are computed from raw trades; performance
   summaries may be cached later but the engine remains the single source of truth.
 
-## Backend / database configuration (future)
+## Backend / database configuration
 
-The frontend is designed to connect cleanly to a real backend. Target:
-**Postgres (Supabase-friendly)** with Row-Level Security so users can only read
-their own rows. Point `VITE_DATA_SOURCE=api` and set the connection variables;
-the DI container in `src/services/` switches implementations.
+The frontend is designed to connect cleanly to Supabase (Postgres with
+Row-Level Security) so users can only read their own rows.
+
+1. Create a Supabase project.
+2. Open **SQL Editor** and paste the whole `supabase/schema.sql` file (tables,
+   RLS policies, triggers and seed data) — Run.
+3. Copy `.env.example` → `.env.local` and set:
+
+   ```
+   VITE_DATA_SOURCE=supabase
+   VITE_SUPABASE_URL=<your-project-url>
+   VITE_SUPABASE_ANON_KEY=<your-anon-public-key>
+   ```
+
+4. Register an account in the app, then promote it to admin:
+   `SQL Editor → update public.profiles set role = 'admin' where id = (select id from auth.users where email = '<your-email>');`
+
+Extending the app to another backend is the same swap — implement the `Api`
+interface from `src/services/interfaces.ts` and return it from
+`src/services/index.ts`.
 
 ## Testing
 

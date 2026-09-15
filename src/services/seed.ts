@@ -1,13 +1,29 @@
 import dayjs from 'dayjs';
-import type { Market, MistakeCode, PsychCode, Strategy, Trade, TradeDirection } from '@/types';
+import type {
+  Favourite,
+  Feedback,
+  Instrument,
+  Market,
+  MistakeCode,
+  PsychCode,
+  Strategy,
+  Trade,
+  TradeDirection,
+  TradingAccount,
+} from '@/types';
 import { DEFAULT_STRATEGIES } from '@/constants/strategies';
 import { DEFAULT_PLANS } from '@/config/plans';
-import { getForexSpec, LOT_UNITS, type LotType } from '@/constants/instruments';
-import { getIndianSpec } from '@/constants/indianInstruments';
+import {
+  FOREX_SPECS,
+  getForexSpec,
+  LOT_UNITS,
+  type LotType,
+} from '@/constants/instruments';
+import { getIndianSpec, INDIAN_INSTRUMENTS } from '@/constants/indianInstruments';
 import { roundTo } from '@/utils/money';
 import { calculateForexPipValue } from '@/calculations/forex';
 import type { Database } from './db';
-import { mockHash } from './db';
+import { DB_VERSION, mockHash } from './db';
 import { getFxProvider } from './fx';
 
 export const DEMO_USER_ID = 'demo-user';
@@ -17,6 +33,8 @@ export const ADMIN_EMAIL = 'admin@tradersworkbook.app';
 export const ADMIN_PASSWORD = 'admin1234';
 const STARTING_CAPITAL = 100_000;
 const ACCOUNT_CCY = 'USD';
+/** The Indian book keeps its own capital base, in rupees (request #5). */
+const INDIAN_STARTING_CAPITAL = 500_000;
 
 /** Deterministic PRNG so the demo data is stable within a session. */
 function mulberry32(seed: number): () => number {
@@ -259,11 +277,126 @@ function generateTrades(): Trade[] {
   return trades;
 }
 
+/**
+ * The local mirror of the `instruments` table seeded by
+ * supabase/migrations/0003_phase1_seed_instruments.sql. Derived from the same
+ * constants the app uses today, so local and Supabase modes agree.
+ */
+function seedInstruments(): Instrument[] {
+  const forex: Instrument[] = FOREX_SPECS.map((spec, i) => ({
+    id: `FX:${spec.symbol.replace('/', '')}`,
+    tradingMode: 'forex',
+    symbol: spec.symbol,
+    name: spec.name,
+    alsoOn: [],
+    hasFno: false,
+    baseCurrency: spec.base,
+    quoteCurrency: spec.quote,
+    contractSize: spec.contractSize,
+    lotSize: spec.contractSize,
+    pipSize: spec.pipSize,
+    tickSize: spec.tickSize,
+    category: spec.category,
+    isActive: true,
+    sortOrder: (i + 1) * 10,
+  }));
+
+  const indian: Instrument[] = INDIAN_INSTRUMENTS.map((spec, i) => ({
+    id: `${spec.exchange}:${spec.symbol}`,
+    tradingMode: 'indian',
+    symbol: spec.symbol,
+    name: spec.name,
+    exchange: spec.exchange,
+    alsoOn: spec.alsoOn,
+    segment: spec.segment,
+    hasFno: spec.hasFno,
+    quoteCurrency: 'INR',
+    contractSize: 1,
+    lotSize: spec.lotSize,
+    tickSize: spec.tickSize,
+    category: spec.segment === 'INDEX' ? 'index' : spec.hasFno ? 'fno' : 'cash',
+    isActive: true,
+    sortOrder: (i + 1) * 10,
+  }));
+
+  return [...forex, ...indian];
+}
+
+function seedTradingAccounts(now: dayjs.Dayjs): TradingAccount[] {
+  const iso = now.toISOString();
+  const account = (
+    userId: string,
+    tradingMode: 'forex' | 'indian',
+    currency: string,
+    startingCapital: number,
+  ): TradingAccount => ({
+    id: `acct-${userId}-${tradingMode}`,
+    userId,
+    tradingMode,
+    currency,
+    startingCapital,
+    createdAt: iso,
+    updatedAt: iso,
+  });
+
+  return [
+    account(DEMO_USER_ID, 'forex', ACCOUNT_CCY, STARTING_CAPITAL),
+    account(DEMO_USER_ID, 'indian', 'INR', INDIAN_STARTING_CAPITAL),
+    account('admin-user', 'forex', ACCOUNT_CCY, 0),
+    account('admin-user', 'indian', 'INR', 0),
+  ];
+}
+
+function seedFavourites(now: dayjs.Dayjs): Favourite[] {
+  const iso = now.toISOString();
+  const fav = (tradingMode: 'forex' | 'indian', symbol: string): Favourite => ({
+    userId: DEMO_USER_ID,
+    tradingMode,
+    symbol,
+    createdAt: iso,
+  });
+  return [
+    fav('forex', 'EUR/USD'),
+    fav('forex', 'GBP/JPY'),
+    fav('indian', 'NIFTY'),
+    fav('indian', 'BANKNIFTY'),
+  ];
+}
+
+/** A couple of messages so the admin inbox isn't empty in local dev. */
+function seedFeedback(now: dayjs.Dayjs): Feedback[] {
+  return [
+    {
+      id: 'fb-1',
+      userId: DEMO_USER_ID,
+      type: 'feature',
+      rating: 4,
+      message: 'Would love to attach a chart screenshot to each trade.',
+      page: '/app/journal',
+      status: 'new',
+      createdAt: now.subtract(2, 'day').toISOString(),
+      updatedAt: now.subtract(2, 'day').toISOString(),
+    },
+    {
+      id: 'fb-2',
+      userId: DEMO_USER_ID,
+      type: 'bug',
+      rating: 3,
+      message: 'Large numbers overflow the cards on the reports page.',
+      page: '/app/reports',
+      status: 'in_review',
+      adminNote: 'Fixed by compact formatting in Phase 2.',
+      createdAt: now.subtract(5, 'day').toISOString(),
+      updatedAt: now.subtract(1, 'day').toISOString(),
+    },
+  ];
+}
+
 /** Build the full seeded database (demo user + admin + trades + plans). */
 export function buildSeed(): Database {
   const now = dayjs();
   return {
-    version: 2,
+    version: DB_VERSION,
     users: [
       {
         id: DEMO_USER_ID,
@@ -311,5 +444,10 @@ export function buildSeed(): Database {
         currentPeriodEnd: now.add(1, 'month').toISOString(),
       },
     ],
+    tradingAccounts: seedTradingAccounts(now),
+    instruments: seedInstruments(),
+    favourites: seedFavourites(now),
+    feedback: seedFeedback(now),
+    auditLog: [],
   };
 }

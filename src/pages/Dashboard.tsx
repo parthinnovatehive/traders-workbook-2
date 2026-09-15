@@ -26,7 +26,14 @@ import { useStrategies } from '@/hooks/useStrategies';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { filterTradesByRange } from '@/hooks/useDateFilter';
 import { resolvePreset } from '@/utils/date';
-import { formatCurrency, formatPercent, formatR, formatSignedCurrency } from '@/utils/format';
+import {
+  formatCompactCurrency,
+  formatCompactSignedCurrency,
+  formatCurrency,
+  formatPercent,
+  formatR,
+  formatSignedCurrency,
+} from '@/utils/format';
 
 export default function Dashboard() {
   const { all, filtered, startingCapital, currency, isLoading } = usePortfolio();
@@ -55,7 +62,9 @@ export default function Dashboard() {
   );
 
   const fc = (n: number | null) => formatCurrency(n, currency);
-  const fcc = (n: number) => formatCurrency(n, currency, { compact: true });
+  // Charts and card values use the reader's own numbering system: lakh/crore
+  // for rupees, K/M/B otherwise.
+  const fcc = (n: number | null) => formatCompactCurrency(n, currency);
 
   if (isLoading) return <LoadingState label="Loading your dashboard…" />;
 
@@ -81,17 +90,25 @@ export default function Dashboard() {
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricCard label="Current Capital" value={fc(allMetrics.endingCapital)} icon={Wallet} sub={`Start ${fcc(startingCapital)}`} />
+        <MetricCard
+          label="Current Capital"
+          value={fcc(allMetrics.endingCapital)}
+          title={fc(allMetrics.endingCapital)}
+          icon={Wallet}
+          sub={`Start ${fcc(startingCapital)}`}
+        />
         <MetricCard
           label="Net P&L"
-          value={formatSignedCurrency(m.netPnl, currency)}
+          value={formatCompactSignedCurrency(m.netPnl, currency)}
+          title={formatSignedCurrency(m.netPnl, currency)}
           tone={m.netPnl > 0 ? 'profit' : m.netPnl < 0 ? 'loss' : 'neutral'}
           icon={m.netPnl >= 0 ? TrendingUp : TrendingDown}
-          sub={`Gross ${fc(m.grossPnl)}`}
+          sub={`Gross ${fcc(m.grossPnl)}`}
         />
         <MetricCard
           label="Today's P&L"
-          value={formatSignedCurrency(today.netPnl, currency)}
+          value={formatCompactSignedCurrency(today.netPnl, currency)}
+          title={formatSignedCurrency(today.netPnl, currency)}
           tone={today.netPnl > 0 ? 'profit' : today.netPnl < 0 ? 'loss' : 'neutral'}
           icon={Activity}
           sub={`${today.closedTrades} trades today`}
@@ -102,15 +119,15 @@ export default function Dashboard() {
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <MetricCard label="Win Rate" value={formatPercent(m.winRate)} sub={`${m.winningTrades}W / ${m.losingTrades}L`} />
         <MetricCard label="Average R" value={formatR(m.averageR)} tone={(m.averageR ?? 0) >= 0 ? 'profit' : 'loss'} />
-        <MetricCard label="Expectancy" value={m.expectancy == null ? 'N/A' : fc(m.expectancy)} tone={(m.expectancy ?? 0) >= 0 ? 'profit' : 'loss'} hint="Expected value per trade" />
-        <MetricCard label="Max Drawdown" value={m.maxDrawdown === 0 ? fc(0) : `-${fc(m.maxDrawdown)}`} tone={m.maxDrawdown > 0 ? 'loss' : 'neutral'} sub={formatPercent(m.maxDrawdownPct)} />
+        <MetricCard label="Expectancy" value={fcc(m.expectancy)} title={fc(m.expectancy)} tone={(m.expectancy ?? 0) >= 0 ? 'profit' : 'loss'} hint="Expected value per trade" />
+        <MetricCard label="Max Drawdown" value={m.maxDrawdown === 0 ? fcc(0) : `-${fcc(m.maxDrawdown)}`} title={fc(m.maxDrawdown)} tone={m.maxDrawdown > 0 ? 'loss' : 'neutral'} sub={formatPercent(m.maxDrawdownPct)} />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <MetricCard label="Total Trades" value={m.totalTrades} sub={`${m.openTrades} open`} />
         <MetricCard label="Profit Factor" value={m.profitFactor == null ? 'N/A' : m.profitFactor.toFixed(2)} tone={(m.profitFactor ?? 0) >= 1 ? 'profit' : 'loss'} />
-        <MetricCard label="Best Trade" value={fc(m.bestTrade)} tone="profit" />
-        <MetricCard label="Worst Trade" value={fc(m.worstTrade)} tone="loss" />
+        <MetricCard label="Best Trade" value={fcc(m.bestTrade)} title={fc(m.bestTrade)} tone="profit" />
+        <MetricCard label="Worst Trade" value={fcc(m.worstTrade)} title={fc(m.worstTrade)} tone="loss" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">

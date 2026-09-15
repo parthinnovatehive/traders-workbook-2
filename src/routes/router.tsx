@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { ROUTES } from '@/constants/routes';
 import { LoadingState } from '@/components/ui';
 import { AppShell } from '@/components/layout/AppShell';
+import { AdminShell } from '@/components/layout/AdminShell';
 import { MarketingLayout } from '@/components/layout/MarketingLayout';
 import { AdminRoute, ProtectedRoute } from './guards';
 
@@ -13,11 +14,18 @@ const Features = lazy(() => import('@/pages/marketing/Features'));
 const Pricing = lazy(() => import('@/pages/marketing/Pricing'));
 const About = lazy(() => import('@/pages/marketing/About'));
 const Faq = lazy(() => import('@/pages/marketing/Faq'));
+const Terms = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Privacy })));
+const Refunds = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Refunds })));
+const Contact = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Contact })));
 const Login = lazy(() => import('@/pages/auth/Login'));
 const Register = lazy(() => import('@/pages/auth/Register'));
+const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword'));
+const ResetPassword = lazy(() => import('@/pages/auth/ResetPassword'));
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Journal = lazy(() => import('@/pages/Journal'));
+const Calendar = lazy(() => import('@/pages/Calendar'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const RiskManagement = lazy(() => import('@/pages/RiskManagement'));
 const Strategies = lazy(() => import('@/pages/Strategies'));
@@ -27,7 +35,13 @@ const HallOfShame = lazy(() => import('@/pages/HallOfShame'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Membership = lazy(() => import('@/pages/Membership'));
-const Admin = lazy(() => import('@/pages/Admin'));
+const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'));
+const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
+const AdminSubscriptions = lazy(() => import('@/pages/admin/AdminSubscriptions'));
+const AdminPlans = lazy(() => import('@/pages/admin/AdminPlans'));
+const AdminInstruments = lazy(() => import('@/pages/admin/AdminInstruments'));
+const AdminFeedback = lazy(() => import('@/pages/admin/AdminFeedback'));
+const AdminAudit = lazy(() => import('@/pages/admin/AdminAudit'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const suspend = (node: ReactNode): ReactNode => (
@@ -45,10 +59,16 @@ export const router = createBrowserRouter([
       { path: ROUTES.pricing, element: suspend(<Pricing />) },
       { path: ROUTES.about, element: suspend(<About />) },
       { path: ROUTES.faq, element: suspend(<Faq />) },
+      { path: ROUTES.terms, element: suspend(<Terms />) },
+      { path: ROUTES.privacy, element: suspend(<Privacy />) },
+      { path: ROUTES.refunds, element: suspend(<Refunds />) },
+      { path: ROUTES.contact, element: suspend(<Contact />) },
     ],
   },
   { path: ROUTES.login, element: suspend(<Login />) },
   { path: ROUTES.register, element: suspend(<Register />) },
+  { path: ROUTES.forgotPassword, element: suspend(<ForgotPassword />) },
+  { path: ROUTES.resetPassword, element: suspend(<ResetPassword />) },
   {
     element: (
       <ProtectedRoute>
@@ -58,6 +78,7 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.app, element: suspend(<Dashboard />) },
       { path: ROUTES.journal, element: suspend(<Journal />) },
+      { path: ROUTES.calendar, element: suspend(<Calendar />) },
       { path: ROUTES.analytics, element: suspend(<Analytics />) },
       { path: ROUTES.risk, element: suspend(<RiskManagement />) },
       { path: ROUTES.strategies, element: suspend(<Strategies />) },
@@ -70,12 +91,20 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    path: ROUTES.admin,
     element: (
       <AdminRoute>
-        {suspend(<Admin />)}
+        <AdminShell />
       </AdminRoute>
     ),
+    children: [
+      { path: ROUTES.admin, element: suspend(<AdminOverview />) },
+      { path: ROUTES.adminUsers, element: suspend(<AdminUsers />) },
+      { path: ROUTES.adminSubscriptions, element: suspend(<AdminSubscriptions />) },
+      { path: ROUTES.adminPlans, element: suspend(<AdminPlans />) },
+      { path: ROUTES.adminInstruments, element: suspend(<AdminInstruments />) },
+      { path: ROUTES.adminFeedback, element: suspend(<AdminFeedback />) },
+      { path: ROUTES.adminAudit, element: suspend(<AdminAudit />) },
+    ],
   },
   { path: '*', element: suspend(<NotFound />) },
 ]);
