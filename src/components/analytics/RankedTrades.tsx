@@ -25,7 +25,7 @@ export function RankedTrades({ rows, metric, currency, positive = true, emptyMes
     return <EmptyState title="Not enough data" message={emptyMessage ?? 'No qualifying trades yet.'} />;
   }
   return (
-    <ol className="divide-y divide-border">
+    <ol className="divide-y divide-border w-full">
       {rows.map((row, i) => (
         <li key={row.trade.id} className="flex items-center gap-3 px-1 py-2.5">
           <span
