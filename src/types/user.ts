@@ -24,6 +24,12 @@ export interface User {
   isSuspended?: boolean;
   suspendedReason?: string;
   lastActiveAt?: ISODateTime;
+  /**
+   * When the first-run wizard was completed. Unset means the user has never
+   * been walked through picking a mode and funding both books, so the app shows
+   * onboarding instead of an empty dashboard with two zero-capital accounts.
+   */
+  onboardedAt?: ISODateTime;
 }
 
 /** Public-facing session user (never carries secrets). */

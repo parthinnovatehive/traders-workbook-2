@@ -102,16 +102,21 @@ create table if not exists public.trades (
 create index if not exists trades_user_created_idx on public.trades (user_id, created_at desc);
 create index if not exists trades_strategy_idx  on public.trades (strategy_id);
 
--- 1e. risk_settings  (one row per user)
+-- 1e. risk_settings  (one row per user PER TRADING MODE)
+-- `daily_loss_limit` is an absolute amount in that book's own currency, so a
+-- single global row cannot express both a rupee limit and a dollar one.
+-- See 0006_risk_per_mode_entitlements_content.sql.
 create table if not exists public.risk_settings (
   id                 uuid primary key default gen_random_uuid(),
-  user_id            uuid not null unique references auth.users (id) on delete cascade,
+  user_id            uuid not null references auth.users (id) on delete cascade,
+  trading_mode       text not null default 'forex' check (trading_mode in ('forex','indian')),
   risk_per_trade_pct numeric not null default 1,
   daily_loss_limit   numeric not null default 1000 check (daily_loss_limit >= 0),
   max_drawdown_pct   numeric not null default 15,
   max_position_pct   numeric not null default 25,
   created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now()
+  updated_at         timestamptz not null default now(),
+  unique (user_id, trading_mode)
 );
 
 -- 1f. subscriptions  (one active subscription per user)
@@ -238,9 +243,12 @@ begin
   values (new.id, new.email, v_display_name, 'user', v_currency, v_capital)
   on conflict (id) do nothing;
 
-  insert into public.risk_settings (user_id)
-  values (new.id)
-  on conflict (user_id) do nothing;
+  -- One rule set per book: a daily loss limit is an amount in that book's
+  -- own currency, so the two cannot share a row.
+  insert into public.risk_settings (user_id, trading_mode, daily_loss_limit)
+  values (new.id, 'forex',  1000),
+         (new.id, 'indian', 25000)
+  on conflict (user_id, trading_mode) do nothing;
 
   insert into public.subscriptions (user_id, plan_id, status)
   values (new.id, 'plan-free', 'free')
@@ -411,8 +419,8 @@ values
     0,
     'monthly',
     'INR',
-    '["Up to 30 trades", "Journal & core metrics", "Dashboard", "1 custom strategy"]'::jsonb,
-    '{"maxTrades": 30, "customStrategies": 1, "advanced_analytics": false, "advanced_risk": false, "reports": false, "export": false, "strategy_analytics": false, "psychology_analytics": false, "ai_insights": false}'::jsonb,
+    '["Up to 30 trades", "Journal, calendar & core metrics", "Dashboard", "1 custom strategy"]'::jsonb,
+    '{"maxTrades": 30, "customStrategies": 1, "advanced_analytics": false, "advanced_risk": false, "reports": false, "export": false, "strategy_analytics": false, "psychology_analytics": false, "halls": false, "ai_insights": false}'::jsonb,
     true,
     0
   ),
@@ -424,7 +432,7 @@ values
     'monthly',
     'INR',
     '["Unlimited trades", "Full analytics suite", "Advanced risk tools", "Strategy & psychology analytics", "Reports + CSV export", "Unlimited custom strategies"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false, "ai_insights": false}'::jsonb,
     true,
     1
   ),
@@ -435,8 +443,8 @@ values
     3299,
     'monthly',
     'INR',
-    '["Everything in Pro", "Hall of Fame & Hall of Shame", "Performance intelligence engine", "Early access to AI reviews", "Priority support"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "ai_insights": true}'::jsonb,
+    '["Everything in Pro", "Hall of Fame & Hall of Shame", "Priority support"]'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true, "ai_insights": false}'::jsonb,
     true,
     2
   ),
@@ -448,7 +456,7 @@ values
     'yearly',
     'INR',
     '["Unlimited trades", "Full analytics suite", "Advanced risk tools", "Strategy & psychology analytics", "Reports + CSV export", "Unlimited custom strategies"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false, "ai_insights": false}'::jsonb,
     true,
     3
   ),
@@ -459,8 +467,8 @@ values
     31999,
     'yearly',
     'INR',
-    '["Everything in Pro", "Hall of Fame & Hall of Shame", "Performance intelligence engine", "Early access to AI reviews", "Priority support"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "ai_insights": true}'::jsonb,
+    '["Everything in Pro", "Hall of Fame & Hall of Shame", "Priority support"]'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true, "ai_insights": false}'::jsonb,
     true,
     4
   )

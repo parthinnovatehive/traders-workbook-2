@@ -12,6 +12,7 @@ import type {
   TradingAccount,
 } from '@/types';
 import { DEFAULT_STRATEGIES } from '@/constants/strategies';
+import { DEFAULT_CONTENT } from '@/config/content';
 import { DEFAULT_PLANS } from '@/config/plans';
 import {
   FOREX_SPECS,
@@ -406,6 +407,9 @@ export function buildSeed(): Database {
         baseCurrency: ACCOUNT_CCY,
         startingCapital: STARTING_CAPITAL,
         createdAt: now.toISOString(),
+        // Both demo accounts are already funded and full of trades, so the
+        // first-run wizard would have nothing to ask them.
+        onboardedAt: now.toISOString(),
       },
       {
         id: 'admin-user',
@@ -415,6 +419,7 @@ export function buildSeed(): Database {
         baseCurrency: ACCOUNT_CCY,
         startingCapital: 0,
         createdAt: now.toISOString(),
+        onboardedAt: now.toISOString(),
       },
     ],
     credentials: [
@@ -423,12 +428,24 @@ export function buildSeed(): Database {
     ],
     trades: generateTrades(),
     strategies: systemStrategies(),
+    // One row per book. The limits differ because the currencies differ — that
+    // is exactly why a single global row could not express them.
     riskSettings: [
       {
-        id: 'risk-demo',
+        id: 'risk-demo-forex',
         userId: DEMO_USER_ID,
+        tradingMode: 'forex',
         riskPerTradePct: 1,
         dailyLossLimit: 3000,
+        maxDrawdownPct: 15,
+        maxPositionPct: 25,
+      },
+      {
+        id: 'risk-demo-indian',
+        userId: DEMO_USER_ID,
+        tradingMode: 'indian',
+        riskPerTradePct: 1,
+        dailyLossLimit: 25_000,
         maxDrawdownPct: 15,
         maxPositionPct: 25,
       },
@@ -449,5 +466,6 @@ export function buildSeed(): Database {
     favourites: seedFavourites(now),
     feedback: seedFeedback(now),
     auditLog: [],
+    content: JSON.parse(JSON.stringify(DEFAULT_CONTENT)) as Database['content'],
   };
 }

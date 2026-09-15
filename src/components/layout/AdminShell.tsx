@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CandlestickChart,
   CreditCard,
+  FileText,
   LayoutDashboard,
   MessageSquare,
   ScrollText,
@@ -23,6 +24,7 @@ const ADMIN_NAV = [
   { to: ROUTES.adminPlans, label: 'Plans & Pricing', icon: Sparkles },
   { to: ROUTES.adminInstruments, label: 'Instruments', icon: CandlestickChart },
   { to: ROUTES.adminFeedback, label: 'Feedback', icon: MessageSquare },
+  { to: ROUTES.adminContent, label: 'Content', icon: FileText },
   { to: ROUTES.adminAudit, label: 'Audit Log', icon: ScrollText },
 ];
 

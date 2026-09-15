@@ -7,10 +7,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { TradeForm } from '@/components/forms/TradeForm';
 import { UpgradeModal } from '@/components/billing/UpgradeModal';
 import { useEntitlements } from '@/hooks/useBilling';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { useStrategies } from '@/hooks/useStrategies';
-import { useDeleteTrade, useTrades } from '@/hooks/useTrades';
-import { useAuthStore } from '@/store/authStore';
-import { useUiStore } from '@/store/uiStore';
+import { useDeleteTrade } from '@/hooks/useTrades';
 import { toast } from '@/store/toastStore';
 import { formatCurrency, formatR } from '@/utils/format';
 import { formatDate } from '@/utils/date';
@@ -28,12 +27,12 @@ interface Row {
 }
 
 export default function Journal() {
-  const tradesQuery = useTrades();
+  // The mode's OWN account supplies the currency and capital base. Reading the
+  // legacy profile fields here rendered Indian trades with a dollar sign while
+  // every other page showed the same P&L in rupees.
+  const { all, startingCapital, currency, isLoading } = usePortfolio();
   const strategiesQuery = useStrategies();
   const deleteTrade = useDeleteTrade();
-  const currency = useAuthStore((s) => s.user?.baseCurrency ?? 'USD');
-  const startingCapital = useAuthStore((s) => s.user?.startingCapital ?? 0);
-  const tradingMode = useUiStore((s) => s.tradingMode);
 
   const [search, setSearch] = useState('');
   const [direction, setDirection] = useState('');
@@ -60,15 +59,20 @@ export default function Journal() {
     return (id: string | null) => (id ? (map.get(id) ?? '—') : '—');
   }, [strategiesQuery.data]);
 
-  const rows = useMemo<Row[]>(() => {
-    const trades = (tradesQuery.data ?? []).filter(
-      (t) => t.tradingMode === undefined || t.tradingMode === tradingMode,
-    );
-    return trades.map((trade) => {
-      const met = computeTradeMetrics(trade, { startingCapital });
-      return { trade, netPnl: met.netPnl, rMultiple: met.rMultiple, status: met.status, outcome: met.outcome };
-    });
-  }, [tradesQuery.data, startingCapital, tradingMode]);
+  const rows = useMemo<Row[]>(
+    () =>
+      all.map((trade) => {
+        const met = computeTradeMetrics(trade, { startingCapital });
+        return {
+          trade,
+          netPnl: met.netPnl,
+          rMultiple: met.rMultiple,
+          status: met.status,
+          outcome: met.outcome,
+        };
+      }),
+    [all, startingCapital],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -125,7 +129,7 @@ export default function Journal() {
     });
   };
 
-  if (tradesQuery.isLoading) return <LoadingState label="Loading trades…" />;
+  if (isLoading) return <LoadingState label="Loading trades…" />;
 
   return (
     <>

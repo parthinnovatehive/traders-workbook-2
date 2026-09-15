@@ -12,6 +12,8 @@ import type { EquityPoint } from '@/types';
 import { ROUTES } from '@/constants/routes';
 import { Badge, Button, MetricCard } from '@/components/ui';
 import { EquityCurveChart } from '@/components/charts';
+import { DEFAULT_CONTENT } from '@/config/content';
+import { useSiteContent } from '@/hooks/useContent';
 
 const SAMPLE: EquityPoint[] = [10000, 10420, 10180, 10890, 11540, 11320, 12180, 12640, 12410, 13280, 13910, 14620].map(
   (equity, index) => ({ index, equity, drawdown: 0 }),
@@ -25,6 +27,11 @@ const PILLARS = [
 ];
 
 export default function Home() {
+  // Hero and CTA copy are admin-editable (Admin → Content); the bundled
+  // defaults render immediately and act as the fallback.
+  const { data: content } = useSiteContent();
+  const copy = content?.marketing ?? DEFAULT_CONTENT.marketing;
+
   return (
     <div>
       {/* Hero */}
@@ -35,14 +42,9 @@ export default function Home() {
               <Sparkles className="h-3 w-3" /> Trading performance OS
             </Badge>
             <h1 className="text-4xl font-bold tracking-tight text-text sm:text-5xl">
-              Turn every trade into data.
-              <br />
-              Turn your data into <span className="text-primary">discipline.</span>
+              {copy.heroTitle}
             </h1>
-            <p className="mt-5 max-w-lg text-base text-muted">
-              Trader&apos;s Workbook is the complete journal, analytics and performance management system for
-              serious traders. Record, analyze, identify mistakes, measure, improve — repeat.
-            </p>
+            <p className="mt-5 max-w-lg text-base text-muted">{copy.heroSubtitle}</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={ROUTES.register}>
                 <Button size="lg">
@@ -55,7 +57,7 @@ export default function Home() {
                 </Button>
               </Link>
             </div>
-            <p className="mt-4 text-xs text-muted">No credit card required · Free plan forever</p>
+            <p className="mt-4 text-xs text-muted">{copy.heroNote}</p>
           </div>
 
           {/* Product preview */}
@@ -108,7 +110,7 @@ export default function Home() {
 
       {/* CTA */}
       <section className="mx-auto w-full max-w-6xl px-4 py-16 text-center sm:px-6">
-        <h2 className="text-2xl font-semibold text-text">Ready to trade with an edge you can measure?</h2>
+        <h2 className="text-2xl font-semibold text-text">{copy.ctaTitle}</h2>
         <div className="mt-6 flex justify-center gap-3">
           <Link to={ROUTES.register}>
             <Button size="lg">Create your workbook</Button>

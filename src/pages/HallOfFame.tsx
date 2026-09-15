@@ -11,12 +11,25 @@ import {
 import { Card, CardBody, CardHeader, LoadingState, MetricCard } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RankedTrades } from '@/components/analytics/RankedTrades';
+import { FeatureGate } from '@/components/billing/FeatureGate';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useStrategies } from '@/hooks/useStrategies';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 
 export default function HallOfFame() {
+  return (
+    <FeatureGate
+      feature="halls"
+      title="Unlock the Hall of Fame"
+      description="Upgrade to Elite to see your best executions ranked by profit, R and reward-to-risk."
+    >
+      <HallOfFameInner />
+    </FeatureGate>
+  );
+}
+
+function HallOfFameInner() {
   const { all, startingCapital, currency, isLoading } = usePortfolio();
   const strategiesQuery = useStrategies();
   const strategies = useMemo(() => strategiesQuery.data ?? [], [strategiesQuery.data]);

@@ -17,6 +17,7 @@ export * from './performance';
 export * from './trade-metrics';
 export * from './strategy';
 export * from './series';
+export * from './positions';
 export * from './calendar';
 export * from './analytics';
 export * from './rankings';

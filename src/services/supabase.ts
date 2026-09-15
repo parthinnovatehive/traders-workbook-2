@@ -20,6 +20,7 @@ import type {
   PlanCode,
   PsychCode,
   RiskSetting,
+  SiteContent,
   Strategy,
   Subscription,
   SubscriptionStatus,
@@ -32,12 +33,14 @@ import type {
   User,
 } from '@/types';
 import { uid } from '@/utils/id';
-import { canCreateTrade } from '@/lib/entitlements';
+import { canCreateStrategy, canCreateTrade, customStrategyLimit } from '@/lib/entitlements';
+import { DEFAULT_CONTENT, withContentDefaults } from '@/config/content';
 import type {
   Api,
   IAdminRepository,
   IAuthService,
   IBillingRepository,
+  IContentRepository,
   IFavouriteRepository,
   IFeedbackRepository,
   IInstrumentRepository,
@@ -49,7 +52,7 @@ import type {
   ProfilePatch,
   RegisterInput,
 } from './interfaces';
-import { TradeLimitError } from './interfaces';
+import { StrategyLimitError, TradeLimitError } from './interfaces';
 import { getSupabase } from './supabaseClient';
 
 /* -------------------------------------------------------------------------- */
@@ -65,6 +68,10 @@ interface ProfileRow {
   base_currency: string;
   starting_capital: number;
   created_at: string;
+  is_suspended?: boolean | null;
+  suspended_reason?: string | null;
+  last_active_at?: string | null;
+  onboarded_at?: string | null;
 }
 
 interface TradingAccountRow {
@@ -181,10 +188,19 @@ interface TradeRow {
 interface RiskRow {
   id: string;
   user_id: string;
+  trading_mode: string | null;
   risk_per_trade_pct: number;
   daily_loss_limit: number;
   max_drawdown_pct: number;
   max_position_pct: number;
+}
+
+interface SiteContentRow {
+  id: string;
+  announcement: unknown;
+  marketing: unknown;
+  faqs: unknown;
+  updated_at: string | null;
 }
 
 interface SubscriptionRow {
@@ -210,6 +226,10 @@ function toUser(r: ProfileRow): User {
     baseCurrency: r.base_currency,
     startingCapital: Number(r.starting_capital),
     createdAt: r.created_at,
+    isSuspended: r.is_suspended ?? false,
+    suspendedReason: r.suspended_reason ?? undefined,
+    lastActiveAt: r.last_active_at ?? undefined,
+    onboardedAt: r.onboarded_at ?? undefined,
   };
 }
 
@@ -345,6 +365,7 @@ function toRisk(r: RiskRow): RiskSetting {
   return {
     id: r.id,
     userId: r.user_id,
+    tradingMode: toMode(r.trading_mode),
     riskPerTradePct: Number(r.risk_per_trade_pct),
     dailyLossLimit: Number(r.daily_loss_limit),
     maxDrawdownPct: Number(r.max_drawdown_pct),
@@ -500,6 +521,38 @@ async function assertCanCreateTrade(userId: string): Promise<void> {
   if (!canCreateTrade(sub, plans, used)) throw new TradeLimitError();
 }
 
+/**
+ * Twin of the `enforce_strategy_limit` trigger, so the UI can show the typed
+ * error before the INSERT is attempted. The trigger stays authoritative.
+ */
+async function assertCanCreateStrategy(userId: string): Promise<void> {
+  const sb = getSupabase();
+  const [subRes, plansRes, countRes] = await Promise.all([
+    sb.from('subscriptions').select('*').eq('user_id', userId).maybeSingle(),
+    sb.from('plans').select('*'),
+    sb
+      .from('strategies')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_system', false),
+  ]);
+  const sub = subRes.data ? toSubscription(subRes.data as SubscriptionRow) : null;
+  const plans = ((plansRes.data ?? []) as PlanRow[]).map(toPlan);
+  const used = countRes.count ?? 0;
+  if (!canCreateStrategy(sub, plans, used)) {
+    throw new StrategyLimitError(customStrategyLimit(sub, plans));
+  }
+}
+
+function toSiteContent(r: SiteContentRow): SiteContent {
+  return withContentDefaults({
+    announcement: r.announcement as SiteContent['announcement'],
+    marketing: r.marketing as SiteContent['marketing'],
+    faqs: (r.faqs ?? []) as SiteContent['faqs'],
+    updatedAt: r.updated_at ?? undefined,
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Auth — Supabase Auth. No passwords, sessions or ids are handled by us.      */
 /* -------------------------------------------------------------------------- */
@@ -598,6 +651,17 @@ const auth: IAuthService = {
     });
     return () => data.subscription.unsubscribe();
   },
+
+  async completeOnboarding(userId) {
+    const { data, error } = await getSupabase()
+      .from('profiles')
+      .update({ onboarded_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+    const updated = unwrap(data, error, 'Failed to finish onboarding');
+    return toUser(updated as ProfileRow);
+  },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -605,14 +669,25 @@ const auth: IAuthService = {
 /* -------------------------------------------------------------------------- */
 
 const trades: ITradeRepository = {
-  async list(userId) {
-    const { data, error } = await getSupabase()
-      .from('trades')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+  async list(userId, filter) {
+    // Narrowed to one book server-side: no page ever renders both modes at
+    // once, so shipping the other one's rows is payload that grows with the
+    // user's history and is thrown away on arrival.
+    let query = getSupabase().from('trades').select('*').eq('user_id', userId);
+    if (filter?.tradingMode) query = query.eq('trading_mode', filter.tradingMode);
+
+    const { data, error } = await query.order('created_at', { ascending: false });
     const rows = unwrap(data, error, 'Failed to load trades') as TradeRow[];
     return rows.map(toTrade);
+  },
+
+  async count(userId) {
+    const { count, error } = await getSupabase()
+      .from('trades')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    if (error) throw new Error(`Failed to count trades: ${error.message}`);
+    return count ?? 0;
   },
 
   async get(userId, id) {
@@ -799,6 +874,7 @@ const strategies: IStrategyRepository = {
   },
 
   async create(userId, input) {
+    await assertCanCreateStrategy(userId);
     const { data, error } = await getSupabase()
       .from('strategies')
       .insert({
@@ -841,27 +917,38 @@ const strategies: IStrategyRepository = {
   },
 };
 
+/** Sensible opening daily loss limit, in the book's own currency. */
+const DEFAULT_DAILY_LOSS_LIMIT: Record<TradingMode, number> = { forex: 1000, indian: 25_000 };
+
 const risk: IRiskRepository = {
-  async get(userId) {
+  async get(userId, tradingMode) {
     const sb = getSupabase();
     const { data, error } = await sb
       .from('risk_settings')
       .select('*')
       .eq('user_id', userId)
+      .eq('trading_mode', tradingMode)
       .maybeSingle();
     if (error && !data) throw new Error(`Failed to load risk settings: ${error.message}`);
     if (data) return toRisk(data as RiskRow);
+
+    // Self-heal: a user who predates per-mode risk settings gets the missing
+    // book's row on first read rather than an error.
     const { data: created, error: cErr } = await sb
       .from('risk_settings')
-      .insert({ user_id: userId })
+      .insert({
+        user_id: userId,
+        trading_mode: tradingMode,
+        daily_loss_limit: DEFAULT_DAILY_LOSS_LIMIT[tradingMode],
+      })
       .select()
       .single();
     const row = unwrap(created, cErr, 'Failed to create risk settings');
     return toRisk(row as RiskRow);
   },
 
-  async update(userId, patch) {
-    await risk.get(userId); // ensure a row exists before updating
+  async update(userId, tradingMode, patch) {
+    await risk.get(userId, tradingMode); // ensure the row exists before updating
     const row: Record<string, number> = {};
     if (patch.riskPerTradePct !== undefined) row.risk_per_trade_pct = patch.riskPerTradePct;
     if (patch.dailyLossLimit !== undefined) row.daily_loss_limit = patch.dailyLossLimit;
@@ -871,10 +958,25 @@ const risk: IRiskRepository = {
       .from('risk_settings')
       .update(row)
       .eq('user_id', userId)
+      .eq('trading_mode', tradingMode)
       .select()
       .single();
     const updated = unwrap(data, error, 'Failed to update risk settings');
     return toRisk(updated as RiskRow);
+  },
+};
+
+const content: IContentRepository = {
+  async get() {
+    // Public catalogue row, like `plans` and `instruments`. A failure here must
+    // never blank the marketing site, so fall back to the bundled defaults.
+    const { data, error } = await getSupabase()
+      .from('site_content')
+      .select('*')
+      .eq('id', 'site')
+      .maybeSingle();
+    if (error || !data) return DEFAULT_CONTENT;
+    return toSiteContent(data as SiteContentRow);
   },
 };
 
@@ -1028,6 +1130,19 @@ const admin: IAdminRepository = {
     });
 
     return toInstrument(updated as InstrumentRow);
+  },
+
+  async updateContent(patch) {
+    // One SECURITY DEFINER call rather than an update plus a separate audit
+    // write: it re-checks is_admin() and logs the change in the same statement,
+    // so a published edit can never end up unaudited.
+    const { data, error } = await getSupabase().rpc('admin_update_content', {
+      p_announcement: patch.announcement ?? null,
+      p_marketing: patch.marketing ?? null,
+      p_faqs: patch.faqs ?? null,
+    });
+    if (error) throw new Error(`Failed to update site content: ${error.message}`);
+    return toSiteContent(data as SiteContentRow);
   },
 
   async auditLog(limit = 200) {
@@ -1185,6 +1300,7 @@ export const supabaseApi: Api = {
   instruments,
   favourites,
   feedback,
+  content,
   admin,
   billing,
 };

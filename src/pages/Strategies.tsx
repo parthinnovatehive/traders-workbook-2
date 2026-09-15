@@ -4,8 +4,16 @@ import { computeStrategyPerformance } from '@/calculations';
 import { StrategyBarChart } from '@/components/charts';
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, LoadingState, Modal } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { FeatureLock } from '@/components/billing/FeatureGate';
+import { UpgradeModal } from '@/components/billing/UpgradeModal';
+import { useFeature } from '@/hooks/useBilling';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { useCreateStrategy, useDeleteStrategy, useStrategies } from '@/hooks/useStrategies';
+import {
+  useCreateStrategy,
+  useDeleteStrategy,
+  useStrategies,
+  useStrategyAllowance,
+} from '@/hooks/useStrategies';
 import { toast } from '@/store/toastStore';
 import { formatCurrency, formatPercent, formatR } from '@/utils/format';
 import { cn } from '@/utils/cn';
@@ -16,8 +24,13 @@ export default function Strategies() {
   const createStrategy = useCreateStrategy();
   const deleteStrategy = useDeleteStrategy();
   const strategies = useMemo(() => strategiesQuery.data ?? [], [strategiesQuery.data]);
+  // Managing strategies is a Free feature (one of them); comparing their
+  // performance is what the paid plans sell.
+  const canSeeAnalytics = useFeature('strategy_analytics');
+  const allowance = useStrategyAllowance();
 
   const [open, setOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
@@ -27,6 +40,11 @@ export default function Strategies() {
   );
   const chartData = perf.map((p) => ({ name: p.name, netPnl: p.netPnl }));
   const fcc = (n: number) => formatCurrency(n, currency, { compact: true });
+
+  const openCreate = () => {
+    if (allowance.canCreate) setOpen(true);
+    else setUpgradeOpen(true);
+  };
 
   const create = () => {
     if (!name.trim()) {
@@ -53,24 +71,35 @@ export default function Strategies() {
     <>
       <PageHeader
         title="Strategies"
-        subtitle="Compare the edge of every setup you trade."
+        subtitle={
+          allowance.unlimited
+            ? 'Compare the edge of every setup you trade.'
+            : `Compare the edge of every setup you trade. ${allowance.used} of ${allowance.limit} custom ${allowance.limit === 1 ? 'strategy' : 'strategies'} used.`
+        }
         actions={
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> New Strategy
           </Button>
         }
       />
 
-      <Card className="mb-4">
-        <CardHeader title="Strategy Comparison" description="Net P&L by strategy (all time)" />
-        <CardBody>{chartData.length ? <StrategyBarChart data={chartData} valueFormatter={fcc} height={300} /> : <EmptyState title="No trades to compare yet" />}</CardBody>
-      </Card>
+      {!canSeeAnalytics ? (
+        <FeatureLock
+          title="Unlock Strategy Analytics"
+          description="Upgrade to Pro to compare win rate, expectancy and drawdown across every setup you trade."
+        />
+      ) : (
+        <>
+          <Card className="mb-4">
+            <CardHeader title="Strategy Comparison" description="Net P&L by strategy (all time)" />
+            <CardBody>{chartData.length ? <StrategyBarChart data={chartData} valueFormatter={fcc} height={300} /> : <EmptyState title="No trades to compare yet" />}</CardBody>
+          </Card>
 
-      <Card className="overflow-hidden">
-        <CardHeader title="Per-Strategy Performance" />
-        {perf.length === 0 ? (
-          <EmptyState title="No strategy data" message="Assign strategies to your trades to see performance here." />
-        ) : (
+          <Card className="overflow-hidden">
+            <CardHeader title="Per-Strategy Performance" />
+            {perf.length === 0 ? (
+              <EmptyState title="No strategy data" message="Assign strategies to your trades to see performance here." />
+            ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead>
@@ -128,8 +157,10 @@ export default function Strategies() {
               </tbody>
             </table>
           </div>
-        )}
-      </Card>
+            )}
+          </Card>
+        </>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="New Strategy" size="md">
         <div className="space-y-4">
@@ -139,6 +170,12 @@ export default function Strategies() {
           <Field label="Description">
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
           </Field>
+          {!allowance.unlimited && (
+            <p className="text-xs text-muted">
+              This uses {allowance.used + 1} of your {allowance.limit} custom{' '}
+              {allowance.limit === 1 ? 'strategy' : 'strategies'}.
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
@@ -149,6 +186,12 @@ export default function Strategies() {
           </div>
         </div>
       </Modal>
+
+      <UpgradeModal
+        open={upgradeOpen}
+        reason="strategies"
+        onClose={() => setUpgradeOpen(false)}
+      />
     </>
   );
 }

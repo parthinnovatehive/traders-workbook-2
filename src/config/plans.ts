@@ -17,10 +17,11 @@ const PRO_LIMITS = {
   export: true,
   strategy_analytics: true,
   psychology_analytics: true,
+  halls: false,
   ai_insights: false,
 } as const;
 
-const ELITE_LIMITS = { ...PRO_LIMITS, ai_insights: true } as const;
+const ELITE_LIMITS = { ...PRO_LIMITS, halls: true } as const;
 
 const PRO_FEATURES = [
   'Unlimited trades',
@@ -31,11 +32,13 @@ const PRO_FEATURES = [
   'Unlimited custom strategies',
 ];
 
+// Every line here maps to a flag in PRO_LIMITS/ELITE_LIMITS that something
+// actually checks. `ai_insights` stays out of this list until the AI review
+// layer exists — selling it while `grep ai_insights src/` finds no
+// implementation is how a plan page becomes a false claim.
 const ELITE_FEATURES = [
   'Everything in Pro',
   'Hall of Fame & Hall of Shame',
-  'Performance intelligence engine',
-  'Early access to AI reviews',
   'Priority support',
 ];
 
@@ -47,7 +50,12 @@ export const DEFAULT_PLANS: Plan[] = [
     price: 0,
     billingPeriod: 'monthly',
     currency: 'INR',
-    features: ['Up to 30 trades', 'Journal & core metrics', 'Dashboard', '1 custom strategy'],
+    features: [
+      'Up to 30 trades',
+      'Journal, calendar & core metrics',
+      'Dashboard',
+      '1 custom strategy',
+    ],
     limits: {
       maxTrades: 30,
       customStrategies: 1,
@@ -57,6 +65,7 @@ export const DEFAULT_PLANS: Plan[] = [
       export: false,
       strategy_analytics: false,
       psychology_analytics: false,
+      halls: false,
       ai_insights: false,
     },
     isActive: true,

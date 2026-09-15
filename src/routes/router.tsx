@@ -41,6 +41,7 @@ const AdminSubscriptions = lazy(() => import('@/pages/admin/AdminSubscriptions')
 const AdminPlans = lazy(() => import('@/pages/admin/AdminPlans'));
 const AdminInstruments = lazy(() => import('@/pages/admin/AdminInstruments'));
 const AdminFeedback = lazy(() => import('@/pages/admin/AdminFeedback'));
+const AdminContent = lazy(() => import('@/pages/admin/AdminContent'));
 const AdminAudit = lazy(() => import('@/pages/admin/AdminAudit'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -103,6 +104,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.adminPlans, element: suspend(<AdminPlans />) },
       { path: ROUTES.adminInstruments, element: suspend(<AdminInstruments />) },
       { path: ROUTES.adminFeedback, element: suspend(<AdminFeedback />) },
+      { path: ROUTES.adminContent, element: suspend(<AdminContent />) },
       { path: ROUTES.adminAudit, element: suspend(<AdminAudit />) },
     ],
   },

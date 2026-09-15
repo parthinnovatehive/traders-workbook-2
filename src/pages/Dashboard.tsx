@@ -5,6 +5,7 @@ import {
   dailyPnlSeries,
   equitySeries,
   monthlyPnlSeries,
+  openPositions,
   rMultipleDistribution,
   timeOfDaySeries,
   winLossDistribution,
@@ -22,10 +23,11 @@ import {
 import { Card, CardBody, CardHeader, EmptyState, LoadingState, MetricCard } from '@/components/ui';
 import { DateFilter } from '@/components/layout/DateFilter';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { OpenPositions } from '@/components/analytics/OpenPositions';
 import { useStrategies } from '@/hooks/useStrategies';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { filterTradesByRange } from '@/hooks/useDateFilter';
-import { resolvePreset } from '@/utils/date';
+import { resolvePreset, todayISO } from '@/utils/date';
 import {
   formatCompactCurrency,
   formatCompactSignedCurrency,
@@ -46,6 +48,10 @@ export default function Dashboard() {
     () => computeAccountMetrics(filterTradesByRange(all, resolvePreset('today')), startingCapital),
     [all, startingCapital],
   );
+
+  // Open positions come from `all`, never the date-filtered set: a position
+  // opened before the selected window is still on, and still at risk.
+  const open = useMemo(() => openPositions(all, todayISO()), [all]);
 
   const equity = useMemo(() => equitySeries(filtered, startingCapital), [filtered, startingCapital]);
   const daily = useMemo(() => dailyPnlSeries(filtered), [filtered]);
@@ -123,12 +129,29 @@ export default function Dashboard() {
         <MetricCard label="Max Drawdown" value={m.maxDrawdown === 0 ? fcc(0) : `-${fcc(m.maxDrawdown)}`} title={fc(m.maxDrawdown)} tone={m.maxDrawdown > 0 ? 'loss' : 'neutral'} sub={formatPercent(m.maxDrawdownPct)} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Total Trades" value={m.totalTrades} sub={`${m.openTrades} open`} />
+        <MetricCard
+          label="Open Positions"
+          value={open.count}
+          sub={open.count === 0 ? 'Nothing at risk' : `${fcc(open.totalRiskAtStop)} at stop`}
+          tone={open.unprotected > 0 ? 'loss' : 'neutral'}
+          hint={
+            open.unprotected > 0
+              ? `${open.unprotected} of them have no stop loss recorded`
+              : undefined
+          }
+        />
         <MetricCard label="Profit Factor" value={m.profitFactor == null ? 'N/A' : m.profitFactor.toFixed(2)} tone={(m.profitFactor ?? 0) >= 1 ? 'profit' : 'loss'} />
         <MetricCard label="Best Trade" value={fcc(m.bestTrade)} title={fc(m.bestTrade)} tone="profit" />
         <MetricCard label="Worst Trade" value={fcc(m.worstTrade)} title={fc(m.worstTrade)} tone="loss" />
       </div>
+
+      {open.count > 0 && (
+        <div className="mt-6">
+          <OpenPositions summary={open} currency={currency} />
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">

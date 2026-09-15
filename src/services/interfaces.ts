@@ -10,7 +10,10 @@ import type {
   Instrument,
   Plan,
   RiskSetting,
+  RiskSettingPatch,
   SignupPoint,
+  SiteContent,
+  SiteContentPatch,
   Strategy,
   Subscription,
   Trade,
@@ -59,14 +62,31 @@ export interface IAuthService {
   updatePassword(newPassword: string): Promise<void>;
   /** Subscribe to sign-in/sign-out happening elsewhere (another tab, token expiry). */
   onAuthStateChange(handler: (user: User | null) => void): () => void;
+  /** Marks the first-run wizard as done. Idempotent. */
+  completeOnboarding(userId: string): Promise<User>;
+}
+
+/**
+ * Server-side narrowing for `trades.list`.
+ *
+ * Every page works inside exactly one trading mode, so fetching the other
+ * book's rows only to discard them client-side is wasted payload that grows
+ * with the user's history. Date filtering deliberately stays on the client: the
+ * realization date is `exitDate ?? entryDate`, and expressing that fallback as
+ * a server-side range predicate would diverge from the engine's own definition.
+ */
+export interface TradeFilter {
+  tradingMode?: TradingMode;
 }
 
 export interface ITradeRepository {
-  list(userId: string): Promise<Trade[]>;
+  list(userId: string, filter?: TradeFilter): Promise<Trade[]>;
   get(userId: string, id: string): Promise<Trade | null>;
   create(userId: string, draft: TradeDraft): Promise<Trade>;
   update(userId: string, id: string, patch: Partial<TradeDraft>): Promise<Trade>;
   remove(userId: string, id: string): Promise<void>;
+  /** Total rows for this user across BOTH modes — the trade-limit denominator. */
+  count(userId: string): Promise<number>;
 }
 
 export interface IStrategyRepository {
@@ -80,9 +100,22 @@ export interface IStrategyRepository {
   remove(userId: string, id: string): Promise<void>;
 }
 
+/**
+ * Risk rules are per (user, trading mode) — a daily loss limit is an amount in
+ * the mode's own currency, so one global row cannot express both books.
+ */
 export interface IRiskRepository {
-  get(userId: string): Promise<RiskSetting>;
-  update(userId: string, patch: Partial<Omit<RiskSetting, 'id' | 'userId'>>): Promise<RiskSetting>;
+  get(userId: string, tradingMode: TradingMode): Promise<RiskSetting>;
+  update(
+    userId: string,
+    tradingMode: TradingMode,
+    patch: RiskSettingPatch,
+  ): Promise<RiskSetting>;
+}
+
+/** Editable marketing copy, FAQ and announcement banner. Public read. */
+export interface IContentRepository {
+  get(): Promise<SiteContent>;
 }
 
 export interface IPlanRepository {
@@ -141,6 +174,8 @@ export interface IAdminRepository {
   updateFeedback(id: string, patch: FeedbackPatch): Promise<Feedback>;
   /** Instrument master maintenance — how lot sizes get corrected without a deploy. */
   updateInstrument(id: string, patch: InstrumentPatch): Promise<Instrument>;
+  /** Marketing copy, FAQ and the announcement banner — edited without a deploy. */
+  updateContent(patch: SiteContentPatch): Promise<SiteContent>;
   auditLog(limit?: number): Promise<AuditEntry[]>;
 }
 
@@ -163,6 +198,7 @@ export interface Api {
   instruments: IInstrumentRepository;
   favourites: IFavouriteRepository;
   feedback: IFeedbackRepository;
+  content: IContentRepository;
   admin: IAdminRepository;
   billing: IBillingRepository;
 }
@@ -173,6 +209,17 @@ export class TradeLimitError extends Error {
   constructor(message = "You've reached your free trade limit.") {
     super(message);
     this.name = 'TradeLimitError';
+  }
+}
+
+/** Thrown when a plan's custom-strategy allowance is already used up. */
+export class StrategyLimitError extends Error {
+  readonly code = 'STRATEGY_LIMIT_REACHED';
+  constructor(limit: number) {
+    super(
+      `Your plan includes ${limit} custom ${limit === 1 ? 'strategy' : 'strategies'}. Upgrade to add more.`,
+    );
+    this.name = 'StrategyLimitError';
   }
 }
 

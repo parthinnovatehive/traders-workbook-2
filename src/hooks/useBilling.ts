@@ -6,7 +6,7 @@ import type { Feature } from '@/types';
 import { canAccessFeature } from '@/lib/entitlements';
 import { useAuthStore } from '@/store/authStore';
 import { usePlans } from './usePlans';
-import { useTrades } from './useTrades';
+import { useTradeCount } from './useTrades';
 
 export function useSubscription() {
   const user = useAuthStore((s) => s.user);
@@ -17,12 +17,18 @@ export function useSubscription() {
   });
 }
 
-/** Combined entitlements for the current user (plan, limit, usage, access). */
+/**
+ * Combined entitlements for the current user (plan, limit, usage, access).
+ *
+ * Usage comes from a server-side COUNT across both books, never from the length
+ * of a loaded list: `useTrades()` is scoped to the active mode, so counting it
+ * would hand a free user a fresh 30 trades per book.
+ */
 export function useEntitlements(): { entitlements: Entitlements; isLoading: boolean } {
   const subscription = useSubscription();
   const plans = usePlans();
-  const trades = useTrades();
-  const tradesUsed = trades.data?.length ?? 0;
+  const tradeCount = useTradeCount();
+  const tradesUsed = tradeCount.data ?? 0;
 
   const entitlements = useMemo(
     () => getEntitlements(subscription.data ?? null, plans.data ?? [], tradesUsed),
@@ -31,7 +37,7 @@ export function useEntitlements(): { entitlements: Entitlements; isLoading: bool
 
   return {
     entitlements,
-    isLoading: subscription.isLoading || plans.isLoading || trades.isLoading,
+    isLoading: subscription.isLoading || plans.isLoading || tradeCount.isLoading,
   };
 }
 

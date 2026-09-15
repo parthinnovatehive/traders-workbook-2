@@ -17,6 +17,8 @@ interface AuthState {
   updateProfile: (patch: ProfilePatch) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  /** Marks the first-run wizard as done so it never shows again. */
+  completeOnboarding: () => Promise<void>;
 }
 
 let unsubscribe: (() => void) | null = null;
@@ -69,5 +71,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   updatePassword: async (newPassword) => {
     await api.auth.updatePassword(newPassword);
+  },
+
+  completeOnboarding: async () => {
+    const current = get().user;
+    if (!current || current.onboardedAt) return;
+    // Optimistic: the wizard closes immediately. If the write fails the user is
+    // simply asked again next session — far better than trapping them in it.
+    set({ user: { ...current, onboardedAt: new Date().toISOString() } });
+    try {
+      const user = await api.auth.completeOnboarding(current.id);
+      set({ user });
+    } catch {
+      // keep the optimistic value for this session
+    }
   },
 }));

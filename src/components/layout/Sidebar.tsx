@@ -38,7 +38,7 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex">
         <div className="flex h-16 items-center px-5">
           <Brand />
         </div>

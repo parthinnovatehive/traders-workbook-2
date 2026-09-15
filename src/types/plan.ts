@@ -39,7 +39,16 @@ export interface Subscription {
   currentPeriodEnd?: ISODateTime;
 }
 
-/** Gateable features (see src/lib/entitlements.ts). */
+/**
+ * Gateable features (see src/lib/entitlements.ts).
+ *
+ * Every entry here must be enforced somewhere in the UI *or* absent from the
+ * plan marketing copy. A flag that is declared, advertised and never checked is
+ * how Free users end up with Pro features.
+ *
+ * `ai_insights` is the one reserved flag: the AI review layer is not built, so
+ * it is deliberately NOT sold in any plan's feature list until it is.
+ */
 export const FEATURES = [
   'trade_entry',
   'advanced_analytics',
@@ -48,6 +57,7 @@ export const FEATURES = [
   'export',
   'strategy_analytics',
   'psychology_analytics',
+  'halls',
   'ai_insights',
 ] as const;
 export type Feature = (typeof FEATURES)[number];

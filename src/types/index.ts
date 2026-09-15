@@ -8,6 +8,7 @@ export * from './metrics';
 export * from './instrument';
 export * from './feedback';
 export * from './admin';
+export * from './content';
 
 // Re-export journal vocabulary types for a single import surface.
 export type { Market, MistakeCode, PsychCode } from '@/constants/journal';

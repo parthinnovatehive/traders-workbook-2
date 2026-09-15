@@ -5,7 +5,7 @@ import { cn } from '@/utils/cn';
 
 export function MobileNav({ onQuickAdd }: { onQuickAdd: () => void }) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-border bg-surface px-2 py-1.5 lg:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-border bg-surface px-2 py-1.5 print:hidden lg:hidden">
       {MOBILE_NAV.slice(0, 2).map((item) => (
         <NavItem key={item.to} {...item} />
       ))}

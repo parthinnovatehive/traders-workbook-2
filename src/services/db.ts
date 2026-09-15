@@ -5,6 +5,7 @@ import type {
   Instrument,
   Plan,
   RiskSetting,
+  SiteContent,
   Strategy,
   Subscription,
   Trade,
@@ -33,6 +34,7 @@ export interface Database {
   favourites: Favourite[];
   feedback: Feedback[];
   auditLog: AuditEntry[];
+  content: SiteContent;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface Database {
  * with a different version and rebuilds from the seed, so a developer's stale
  * browser data can never crash the app after a schema change.
  */
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 const KEY = 'twb.db.v1';
 

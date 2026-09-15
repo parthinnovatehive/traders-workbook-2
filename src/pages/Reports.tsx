@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Download, Printer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react';
 import type { DateRange } from '@/utils/date';
 import {
   computeAccountMetrics,
@@ -30,32 +30,68 @@ const PERIOD_TABS = [
   { value: 'yearly', label: 'Yearly' },
 ];
 
-function periodRange(period: Period): { range: DateRange; label: string } {
+const ISO = 'YYYY-MM-DD';
+
+/**
+ * Resolve a reporting period.
+ *
+ * `offset` counts periods back from today: 0 is the current one, -1 the
+ * previous. Without it the page could only ever render the period in progress,
+ * so "last month's report" — the single most common thing anyone wants from a
+ * reports page — was unreachable.
+ */
+function periodRange(period: Period, offset: number): { range: DateRange; label: string } {
   const now = dayjs();
   switch (period) {
-    case 'daily':
-      return { range: { start: now.format('YYYY-MM-DD'), end: now.format('YYYY-MM-DD') }, label: now.format('MMMM D, YYYY') };
-    case 'weekly':
-      return { range: { start: now.startOf('week').format('YYYY-MM-DD'), end: now.endOf('week').format('YYYY-MM-DD') }, label: `Week of ${now.startOf('week').format('MMM D')}` };
-    case 'monthly':
-      return { range: { start: now.startOf('month').format('YYYY-MM-DD'), end: now.endOf('month').format('YYYY-MM-DD') }, label: now.format('MMMM YYYY') };
+    case 'daily': {
+      const d = now.add(offset, 'day');
+      return {
+        range: { start: d.format(ISO), end: d.format(ISO) },
+        label: d.format('MMMM D, YYYY'),
+      };
+    }
+    case 'weekly': {
+      const w = now.add(offset, 'week');
+      return {
+        range: { start: w.startOf('week').format(ISO), end: w.endOf('week').format(ISO) },
+        label: `Week of ${w.startOf('week').format('MMM D, YYYY')}`,
+      };
+    }
+    case 'monthly': {
+      const m = now.add(offset, 'month');
+      return {
+        range: { start: m.startOf('month').format(ISO), end: m.endOf('month').format(ISO) },
+        label: m.format('MMMM YYYY'),
+      };
+    }
     case 'quarterly': {
-      const q = Math.floor(now.month() / 3);
-      const start = now.month(q * 3).startOf('month');
-      const end = now.month(q * 3 + 2).endOf('month');
-      return { range: { start: start.format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') }, label: `Q${q + 1} ${now.format('YYYY')}` };
+      // Step whole quarters, then snap to that quarter's own boundaries.
+      const base = now.add(offset * 3, 'month');
+      const q = Math.floor(base.month() / 3);
+      const start = base.month(q * 3).startOf('month');
+      const end = base.month(q * 3 + 2).endOf('month');
+      return {
+        range: { start: start.format(ISO), end: end.format(ISO) },
+        label: `Q${q + 1} ${base.format('YYYY')}`,
+      };
     }
     case 'yearly':
-    default:
-      return { range: { start: now.startOf('year').format('YYYY-MM-DD'), end: now.endOf('year').format('YYYY-MM-DD') }, label: now.format('YYYY') };
+    default: {
+      const y = now.add(offset, 'year');
+      return {
+        range: { start: y.startOf('year').format(ISO), end: y.endOf('year').format(ISO) },
+        label: y.format('YYYY'),
+      };
+    }
   }
 }
 
 export default function Reports() {
   const { all, startingCapital, currency, isLoading } = usePortfolio();
   const [period, setPeriod] = useState<Period>('monthly');
+  const [offset, setOffset] = useState(0);
 
-  const { range, label } = useMemo(() => periodRange(period), [period]);
+  const { range, label } = useMemo(() => periodRange(period, offset), [period, offset]);
   const trades = useMemo(() => filterTradesByRange(all, range), [all, range]);
   const m = useMemo(() => computeAccountMetrics(trades, startingCapital), [trades, startingCapital]);
   const best = useMemo(() => topTradesByProfit(trades, 3), [trades]);
@@ -84,7 +120,7 @@ export default function Reports() {
         title="Reports"
         subtitle={`${label} · ${trades.length} trades`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 print:hidden">
             <Button variant="outline" size="sm" onClick={exportCsv}>
               <Download className="h-4 w-4" /> CSV / Excel
             </Button>
@@ -94,7 +130,42 @@ export default function Reports() {
           </div>
         }
       >
-        <Tabs items={PERIOD_TABS} value={period} onChange={(v) => setPeriod(v as Period)} />
+        <div className="flex flex-wrap items-center gap-3 print:hidden">
+          <Tabs
+            items={PERIOD_TABS}
+            value={period}
+            onChange={(v) => {
+              setPeriod(v as Period);
+              // A "3 months ago" quarter and a "3 days ago" day are different
+              // places; jump back to the current period on a unit change.
+              setOffset(0);
+            }}
+          />
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Previous period"
+              onClick={() => setOffset((o) => o - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Next period"
+              disabled={offset >= 0}
+              onClick={() => setOffset((o) => Math.min(0, o + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {offset !== 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setOffset(0)}>
+                Today
+              </Button>
+            )}
+          </div>
+        </div>
       </PageHeader>
 
       {trades.length === 0 ? (

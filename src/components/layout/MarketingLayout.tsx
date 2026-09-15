@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/ui';
+import { AnnouncementBanner } from './AnnouncementBanner';
 import { Brand } from './Brand';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -22,6 +23,7 @@ const LEGAL_LINKS = [
 export function MarketingLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-bg">
+      <AnnouncementBanner />
       <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-6 px-4 sm:px-6">
           <Link to={ROUTES.home}>

@@ -3,7 +3,9 @@ import { Outlet } from 'react-router-dom';
 import { Modal } from '@/components/ui';
 import { TradeForm } from '@/components/forms/TradeForm';
 import { UpgradeModal } from '@/components/billing/UpgradeModal';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { useEntitlements } from '@/hooks/useBilling';
+import { AnnouncementBanner } from './AnnouncementBanner';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
 import { Sidebar } from './Sidebar';
@@ -22,12 +24,14 @@ export function AppShell() {
     <div className="flex min-h-screen bg-bg">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
+        <AnnouncementBanner />
         <Header onNewTrade={openQuickAdd} />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-24 pt-6 sm:px-6 lg:pb-10">
           <Outlet />
         </main>
       </div>
       <MobileNav onQuickAdd={openQuickAdd} />
+      <OnboardingWizard />
 
       <Modal
         open={quickAdd}

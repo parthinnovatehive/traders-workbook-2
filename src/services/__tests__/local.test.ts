@@ -222,10 +222,153 @@ describe('feedback', () => {
   });
 });
 
+describe('risk settings', () => {
+  it('keeps a separate rule set per trading mode', async () => {
+    const forex = await localApi.risk.get(DEMO_USER_ID, 'forex');
+    const indian = await localApi.risk.get(DEMO_USER_ID, 'indian');
+
+    expect(forex.tradingMode).toBe('forex');
+    expect(indian.tradingMode).toBe('indian');
+    // A rupee limit and a dollar limit are different rules, not one number.
+    expect(forex.dailyLossLimit).not.toBe(indian.dailyLossLimit);
+  });
+
+  it('edits one book without touching the other', async () => {
+    await localApi.risk.update(DEMO_USER_ID, 'indian', { dailyLossLimit: 50_000 });
+
+    const indian = await localApi.risk.get(DEMO_USER_ID, 'indian');
+    const forex = await localApi.risk.get(DEMO_USER_ID, 'forex');
+
+    expect(indian.dailyLossLimit).toBe(50_000);
+    expect(forex.dailyLossLimit).toBe(3000);
+  });
+
+  it('opens both rule sets on registration', async () => {
+    const user = await localApi.auth.register(registerInput);
+
+    await expect(localApi.risk.get(user!.id, 'forex')).resolves.toMatchObject({
+      tradingMode: 'forex',
+    });
+    await expect(localApi.risk.get(user!.id, 'indian')).resolves.toMatchObject({
+      tradingMode: 'indian',
+    });
+  });
+
+  it('adopts a pre-per-mode row as the Forex book rather than losing it', async () => {
+    const stored = JSON.parse(localStorage.getItem('twb.db.v1')!) as {
+      riskSettings: { userId: string; tradingMode?: string; dailyLossLimit: number }[];
+    };
+    // Simulate a row written before risk settings went per-mode.
+    stored.riskSettings = [{ userId: DEMO_USER_ID, dailyLossLimit: 777 }] as never;
+    localStorage.setItem('twb.db.v1', JSON.stringify(stored));
+
+    const { localApi: fresh } = await import('../local');
+    const forex = await fresh.risk.get(DEMO_USER_ID, 'forex');
+
+    expect(forex.tradingMode).toBe('forex');
+  });
+});
+
+describe('trades', () => {
+  it('filters to one book server-side', async () => {
+    const forex = await localApi.trades.list(DEMO_USER_ID, { tradingMode: 'forex' });
+    const indian = await localApi.trades.list(DEMO_USER_ID, { tradingMode: 'indian' });
+
+    expect(forex.length).toBeGreaterThan(0);
+    expect(indian.length).toBeGreaterThan(0);
+    expect(forex.every((t) => t.tradingMode === 'forex')).toBe(true);
+    expect(indian.every((t) => t.tradingMode === 'indian')).toBe(true);
+  });
+
+  it('counts BOTH books, so a per-mode list cannot inflate the trade allowance', async () => {
+    const all = await localApi.trades.list(DEMO_USER_ID);
+    const forex = await localApi.trades.list(DEMO_USER_ID, { tradingMode: 'forex' });
+    const count = await localApi.trades.count(DEMO_USER_ID);
+
+    expect(count).toBe(all.length);
+    expect(count).toBeGreaterThan(forex.length);
+  });
+});
+
+describe('custom strategy limit', () => {
+  it('stops a Free user at their plan allowance', async () => {
+    const user = await localApi.auth.register(registerInput); // registers on FREE
+
+    await localApi.strategies.create(user!.id, { name: 'First' });
+    await expect(localApi.strategies.create(user!.id, { name: 'Second' })).rejects.toThrow(
+      /1 custom strategy/i,
+    );
+  });
+
+  it('does not count the system strategies against the allowance', async () => {
+    const user = await localApi.auth.register(registerInput);
+    const before = await localApi.strategies.list(user!.id);
+
+    expect(before.filter((s) => s.isSystem).length).toBeGreaterThan(0);
+    // The one custom strategy is still available despite the system rows.
+    await expect(localApi.strategies.create(user!.id, { name: 'Mine' })).resolves.toMatchObject({
+      name: 'Mine',
+    });
+  });
+
+  it('lets an unlimited plan keep going', async () => {
+    // The demo account is seeded on Pro (customStrategies: -1).
+    await localApi.strategies.create(DEMO_USER_ID, { name: 'One' });
+    await localApi.strategies.create(DEMO_USER_ID, { name: 'Two' });
+    const mine = await localApi.strategies.list(DEMO_USER_ID);
+
+    expect(mine.filter((s) => !s.isSystem)).toHaveLength(2);
+  });
+});
+
+describe('site content', () => {
+  it('serves the bundled defaults out of the box', async () => {
+    const content = await localApi.content.get();
+
+    expect(content.faqs.length).toBeGreaterThan(0);
+    expect(content.announcement.enabled).toBe(false);
+    expect(content.marketing.heroTitle).toBeTruthy();
+  });
+
+  it('publishes an admin edit and audits which section changed', async () => {
+    await localApi.auth.login(DEMO_EMAIL, DEMO_PASSWORD);
+    await localApi.admin.updateContent({
+      announcement: { enabled: true, message: 'Maintenance Sunday.', tone: 'warning' },
+    });
+
+    const content = await localApi.content.get();
+    expect(content.announcement).toMatchObject({ enabled: true, message: 'Maintenance Sunday.' });
+
+    const log = await localApi.admin.auditLog();
+    expect(log[0]).toMatchObject({ action: 'update_content', targetType: 'content' });
+  });
+
+  it('restores a default rather than publishing a blank headline', async () => {
+    const before = await localApi.content.get();
+    await localApi.admin.updateContent({
+      marketing: { ...before.marketing, heroTitle: '   ' },
+    });
+
+    const after = await localApi.content.get();
+    expect(after.marketing.heroTitle).toBe(before.marketing.heroTitle);
+  });
+});
+
 describe('auth', () => {
   it('signs in the seeded demo account', async () => {
     const user = await localApi.auth.login(DEMO_EMAIL, DEMO_PASSWORD);
     expect(user.id).toBe(DEMO_USER_ID);
+  });
+
+  it('records onboarding once and does not move the timestamp afterwards', async () => {
+    const user = await localApi.auth.register(registerInput);
+    expect(user!.onboardedAt).toBeUndefined();
+
+    const first = await localApi.auth.completeOnboarding(user!.id);
+    const second = await localApi.auth.completeOnboarding(user!.id);
+
+    expect(first.onboardedAt).toBeTruthy();
+    expect(second.onboardedAt).toBe(first.onboardedAt);
   });
 
   it('rejects a wrong password', async () => {

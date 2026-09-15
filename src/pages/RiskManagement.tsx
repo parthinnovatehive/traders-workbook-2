@@ -1,21 +1,43 @@
 import { useMemo, useState } from 'react';
 import { ShieldAlert, TriangleAlert } from 'lucide-react';
-import type { RiskWarning } from '@/types';
+import type { RiskWarning, TradingMode } from '@/types';
 import { closedTradesInOrder, computeAccountMetrics, initialRisk } from '@/calculations';
 import { Button, Card, CardBody, CardHeader, Field, Input, LoadingState, MetricCard } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { FeatureGate } from '@/components/billing/FeatureGate';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useRiskSetting, useUpdateRiskSetting } from '@/hooks/useRisk';
 import { filterTradesByRange } from '@/hooks/useDateFilter';
 import { resolvePreset } from '@/utils/date';
+import { useUiStore } from '@/store/uiStore';
 import { toast } from '@/store/toastStore';
 import { formatCurrency, formatPercent } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
+const MODE_LABELS: Record<TradingMode, string> = { forex: 'Forex', indian: 'Indian' };
+
 export default function RiskManagement() {
-  const { all, startingCapital, currency, isLoading } = usePortfolio();
-  const riskQuery = useRiskSetting();
-  const updateRisk = useUpdateRiskSetting();
+  const tradingMode = useUiStore((s) => s.tradingMode);
+  return (
+    <FeatureGate
+      feature="advanced_risk"
+      title="Unlock Risk Management"
+      description="Upgrade to Pro for per-book risk rules, live limit monitoring and the position size calculator."
+    >
+      {/* Keyed on the mode so switching books remounts with that book's rules,
+          instead of leaving a half-edited draft from the other one on screen. */}
+      <RiskManagementInner key={tradingMode} />
+    </FeatureGate>
+  );
+}
+
+function RiskManagementInner() {
+  const { all, startingCapital, currency, tradingMode, isLoading } = usePortfolio();
+  // Rules belong to the active book: a daily loss limit is an amount in THIS
+  // account's currency, so switching modes loads that book's own rules rather
+  // than re-labelling one global number with a different symbol.
+  const riskQuery = useRiskSetting(tradingMode);
+  const updateRisk = useUpdateRiskSetting(tradingMode);
 
   const setting = riskQuery.data;
   const [draft, setDraft] = useState<{ riskPerTradePct: string; dailyLossLimit: string; maxDrawdownPct: string; maxPositionPct: string } | null>(
@@ -82,7 +104,10 @@ export default function RiskManagement() {
 
   return (
     <>
-      <PageHeader title="Risk Management" subtitle="Define your rules and monitor exposure." />
+      <PageHeader
+        title="Risk Management"
+        subtitle={`Rules for your ${MODE_LABELS[tradingMode]} book, in ${currency}. Each book has its own.`}
+      />
 
       {warnings.length > 0 && (
         <div className="mb-5 space-y-2">
@@ -114,13 +139,16 @@ export default function RiskManagement() {
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Risk Rules" description="Your personal risk configuration" />
+          <CardHeader
+            title="Risk Rules"
+            description={`Applied to your ${MODE_LABELS[tradingMode]} book only`}
+          />
           <CardBody className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Field label="Risk per trade (%)">
                 <Input type="number" step="any" value={form.riskPerTradePct} onChange={(e) => setDraft({ ...form, riskPerTradePct: e.target.value })} />
               </Field>
-              <Field label="Daily loss limit">
+              <Field label={`Daily loss limit (${currency})`}>
                 <Input type="number" step="any" value={form.dailyLossLimit} onChange={(e) => setDraft({ ...form, dailyLossLimit: e.target.value })} />
               </Field>
               <Field label="Max drawdown (%)">

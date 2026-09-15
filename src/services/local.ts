@@ -15,7 +15,8 @@ import type {
   User,
 } from '@/types';
 import { uid } from '@/utils/id';
-import { canCreateTrade } from '@/lib/entitlements';
+import { canCreateStrategy, canCreateTrade, customStrategyLimit } from '@/lib/entitlements';
+import { withContentDefaults } from '@/config/content';
 import { type Database, DB_VERSION, loadDb, mockHash, saveDb } from './db';
 import { buildSeed } from './seed';
 import {
@@ -23,6 +24,7 @@ import {
   type IAdminRepository,
   type IAuthService,
   type IBillingRepository,
+  type IContentRepository,
   type IFavouriteRepository,
   type IFeedbackRepository,
   type IInstrumentRepository,
@@ -33,6 +35,7 @@ import {
   type ITradingAccountRepository,
   type ProfilePatch,
   type RegisterInput,
+  StrategyLimitError,
   TradeLimitError,
 } from './interfaces';
 
@@ -180,14 +183,28 @@ const auth: IAuthService = {
       },
     );
 
-    db().riskSettings.push({
-      id: uid(),
-      userId: user.id,
-      riskPerTradePct: 1,
-      dailyLossLimit: Math.max(1, Math.round(input.forexStartingCapital * 0.03)),
-      maxDrawdownPct: 15,
-      maxPositionPct: 25,
-    });
+    // A risk rule set per book — each daily loss limit is denominated in that
+    // book's own currency, so they are seeded from that book's capital.
+    db().riskSettings.push(
+      {
+        id: uid(),
+        userId: user.id,
+        tradingMode: 'forex',
+        riskPerTradePct: 1,
+        dailyLossLimit: Math.max(1, Math.round(input.forexStartingCapital * 0.03)),
+        maxDrawdownPct: 15,
+        maxPositionPct: 25,
+      },
+      {
+        id: uid(),
+        userId: user.id,
+        tradingMode: 'indian',
+        riskPerTradePct: 1,
+        dailyLossLimit: Math.max(1, Math.round(input.indianStartingCapital * 0.03)),
+        maxDrawdownPct: 15,
+        maxPositionPct: 25,
+      },
+    );
     db().subscriptions.push({
       id: uid(),
       userId: user.id,
@@ -231,6 +248,15 @@ const auth: IAuthService = {
   onAuthStateChange(handler) {
     authListeners.add(handler);
     return () => authListeners.delete(handler);
+  },
+
+  async completeOnboarding(userId: string) {
+    const user = db().users.find((u) => u.id === userId);
+    if (!user) throw new Error('Account not found.');
+    user.onboardedAt ??= new Date().toISOString();
+    commit();
+    emitAuthChange(clone(user));
+    return clone(user);
   },
 };
 
@@ -349,8 +375,17 @@ const feedback: IFeedbackRepository = {
 };
 
 const trades: ITradeRepository = {
-  async list(userId) {
-    return clone(db().trades.filter((t) => t.userId === userId));
+  async list(userId, filter) {
+    return clone(
+      db().trades.filter(
+        (t) =>
+          t.userId === userId &&
+          (!filter?.tradingMode || t.tradingMode === filter.tradingMode),
+      ),
+    );
+  },
+  async count(userId) {
+    return db().trades.filter((t) => t.userId === userId).length;
   },
   async get(userId, id) {
     return clone(db().trades.find((t) => t.userId === userId && t.id === id) ?? null);
@@ -389,6 +424,15 @@ const strategies: IStrategyRepository = {
     return clone(db().strategies.filter((s) => s.isSystem || s.userId === userId));
   },
   async create(userId, input) {
+    // The plan's custom-strategy allowance is enforced HERE for the same reason
+    // the trade limit is: the repository is the only place a client cannot
+    // route around. The Supabase twin is the enforce_strategy_limit trigger.
+    const data = db();
+    const used = data.strategies.filter((s) => s.userId === userId && !s.isSystem).length;
+    const sub = data.subscriptions.find((s) => s.userId === userId) ?? null;
+    if (!canCreateStrategy(sub, data.plans, used)) {
+      throw new StrategyLimitError(customStrategyLimit(sub, data.plans));
+    }
     const strategy: Strategy = {
       id: uid(),
       userId,
@@ -398,7 +442,7 @@ const strategies: IStrategyRepository = {
       isActive: true,
       createdAt: new Date().toISOString(),
     };
-    db().strategies.push(strategy);
+    data.strategies.push(strategy);
     commit();
     return clone(strategy);
   },
@@ -419,28 +463,50 @@ const strategies: IStrategyRepository = {
 };
 
 const risk: IRiskRepository = {
-  async get(userId) {
-    let setting = db().riskSettings.find((r) => r.userId === userId);
+  async get(userId, tradingMode: TradingMode) {
+    const data = db();
+    let setting = data.riskSettings.find(
+      (r) => r.userId === userId && r.tradingMode === tradingMode,
+    );
     if (!setting) {
-      setting = {
-        id: uid(),
-        userId,
-        riskPerTradePct: 1,
-        dailyLossLimit: 1000,
-        maxDrawdownPct: 15,
-        maxPositionPct: 25,
-      };
-      db().riskSettings.push(setting);
+      // Self-heal, including for rows written before risk went per-mode: an
+      // unmigrated row is adopted as the Forex book's rules rather than lost.
+      const legacy = data.riskSettings.find(
+        (r) => r.userId === userId && r.tradingMode === undefined,
+      );
+      if (legacy && tradingMode === 'forex') {
+        legacy.tradingMode = 'forex';
+        setting = legacy;
+      } else {
+        setting = {
+          id: uid(),
+          userId,
+          tradingMode,
+          riskPerTradePct: 1,
+          dailyLossLimit: tradingMode === 'indian' ? 25_000 : 1000,
+          maxDrawdownPct: 15,
+          maxPositionPct: 25,
+        };
+        data.riskSettings.push(setting);
+      }
       commit();
     }
     return clone(setting);
   },
-  async update(userId, patch) {
-    await risk.get(userId); // ensure a row exists
-    const current = db().riskSettings.find((r) => r.userId === userId) as RiskSetting;
+  async update(userId, tradingMode: TradingMode, patch) {
+    await risk.get(userId, tradingMode); // ensure the row exists
+    const current = db().riskSettings.find(
+      (r) => r.userId === userId && r.tradingMode === tradingMode,
+    ) as RiskSetting;
     Object.assign(current, patch);
     commit();
     return clone(current);
+  },
+};
+
+const content: IContentRepository = {
+  async get() {
+    return withContentDefaults(clone(db().content));
   },
 };
 
@@ -602,6 +668,20 @@ const admin: IAdminRepository = {
     return clone(instrument);
   },
 
+  async updateContent(patch) {
+    const data = db();
+    const before = clone(data.content);
+    data.content = withContentDefaults({ ...data.content, ...patch });
+    data.content.updatedAt = new Date().toISOString();
+    // Store which sections changed, not the full before/after bodies — an audit
+    // row carrying entire marketing pages is noise in the log.
+    audit('update_content', 'content', 'site', { sections: Object.keys(before) }, {
+      sections: Object.keys(patch),
+    });
+    commit();
+    return clone(data.content);
+  },
+
   async auditLog(limit = 200) {
     return clone(
       db()
@@ -691,6 +771,7 @@ export const localApi: Api = {
   instruments,
   favourites,
   feedback,
+  content,
   admin,
   billing,
 };

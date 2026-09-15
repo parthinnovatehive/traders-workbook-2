@@ -63,6 +63,7 @@ export const AUDIT_ACTIONS = [
   'update_plan',
   'update_instrument',
   'update_feedback',
+  'update_content',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number] | (string & {});
 
@@ -86,4 +87,5 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   update_plan: 'Updated plan',
   update_instrument: 'Updated instrument',
   update_feedback: 'Triaged feedback',
+  update_content: 'Updated site content',
 };

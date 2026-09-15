@@ -28,6 +28,7 @@ export const ROUTES = {
   adminPlans: '/admin/plans',
   adminInstruments: '/admin/instruments',
   adminFeedback: '/admin/feedback',
+  adminContent: '/admin/content',
   adminAudit: '/admin/audit',
 
   terms: '/terms',

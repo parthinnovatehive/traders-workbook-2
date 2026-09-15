@@ -14,6 +14,7 @@ import {
 import { Badge, Card, CardBody, CardHeader, EmptyState, LoadingState, MetricCard } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RankedTrades } from '@/components/analytics/RankedTrades';
+import { FeatureGate } from '@/components/billing/FeatureGate';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useStrategies } from '@/hooks/useStrategies';
 import { formatCurrency, formatR } from '@/utils/format';
@@ -33,6 +34,18 @@ const ADVICE: Partial<Record<MistakeCode, string>> = {
 };
 
 export default function HallOfShame() {
+  return (
+    <FeatureGate
+      feature="halls"
+      title="Unlock the Hall of Shame"
+      description="Upgrade to Elite to see what your worst executions and broken rules actually cost you."
+    >
+      <HallOfShameInner />
+    </FeatureGate>
+  );
+}
+
+function HallOfShameInner() {
   const { all, startingCapital, currency, isLoading } = usePortfolio();
   const strategiesQuery = useStrategies();
   const strategies = useMemo(() => strategiesQuery.data ?? [], [strategiesQuery.data]);

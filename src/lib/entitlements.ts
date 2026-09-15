@@ -81,6 +81,28 @@ export function canCreateTrade(
   return tradesUsed < limit;
 }
 
+/** Max custom (non-system) strategies allowed (-1 = unlimited). */
+export function customStrategyLimit(
+  subscription: Subscription | null | undefined,
+  plans: readonly Plan[],
+  now: Date = new Date(),
+): number {
+  const plan = effectivePlan(subscription, plans, now);
+  const lim = plan?.limits.customStrategies;
+  return typeof lim === 'number' ? lim : 1;
+}
+
+export function canCreateStrategy(
+  subscription: Subscription | null | undefined,
+  plans: readonly Plan[],
+  strategiesUsed: number,
+  now: Date = new Date(),
+): boolean {
+  const limit = customStrategyLimit(subscription, plans, now);
+  if (limit < 0) return true; // unlimited
+  return strategiesUsed < limit;
+}
+
 export interface Entitlements {
   plan: Plan | null;
   status: Subscription['status'];
@@ -89,6 +111,9 @@ export interface Entitlements {
   tradesUsed: number;
   tradesRemaining: number; // -1 = unlimited
   canCreateTrade: boolean;
+  /** Fraction of the trade allowance consumed, 0–1. Always 0 when unlimited. */
+  tradeUsageRatio: number;
+  strategyLimit: number; // -1 = unlimited
 }
 
 export function getEntitlements(
@@ -106,5 +131,7 @@ export function getEntitlements(
     tradesUsed,
     tradesRemaining: limit < 0 ? -1 : Math.max(0, limit - tradesUsed),
     canCreateTrade: canCreateTrade(subscription, plans, tradesUsed, now),
+    tradeUsageRatio: limit <= 0 ? 0 : Math.min(1, tradesUsed / limit),
+    strategyLimit: customStrategyLimit(subscription, plans, now),
   };
 }

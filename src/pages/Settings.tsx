@@ -31,9 +31,10 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { isLocalDataSource, resetLocalData } from '@/services';
 import { useTradingAccounts, useUpdateTradingAccount } from '@/hooks/useTradingAccounts';
+import { useFeature } from '@/hooks/useBilling';
 import { useMyFeedback } from '@/hooks/useFeedback';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { useTrades } from '@/hooks/useTrades';
+import { useAllTrades } from '@/hooks/useTrades';
 import { downloadText, tradesToCsv } from '@/utils/export';
 import { formatDate, todayISO } from '@/utils/date';
 import { toast } from '@/store/toastStore';
@@ -328,10 +329,15 @@ function ProfileTab() {
 
 /** Export and account deletion — a user must be able to leave with their data. */
 function DataCard() {
-  const { all: forexTrades } = usePortfolio();
-  const trades = useTrades();
+  const { all: modeTrades } = usePortfolio();
+  // Both books, unfiltered: "download everything" must mean everything, not
+  // whichever mode the toggle happens to be on.
+  const trades = useAllTrades();
   const accounts = useTradingAccounts();
   const user = useAuthStore((s) => s.user);
+  // CSV is the paid analyst convenience. The complete JSON export is NOT gated
+  // on any plan — being able to leave with your own data is not a feature.
+  const canExportCsv = useFeature('export');
   const [confirming, setConfirming] = useState(false);
 
   const exportJson = () => {
@@ -365,10 +371,16 @@ function DataCard() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted">
             Download everything: your profile, both accounts and all{' '}
-            {(trades.data ?? []).length} trades ({forexTrades.length} in the current mode).
+            {(trades.data ?? []).length} trades ({modeTrades.length} in the current mode).
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={exportCsv}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCsv}
+              disabled={!canExportCsv}
+              title={canExportCsv ? undefined : 'CSV export is available on Pro and Elite'}
+            >
               <Download className="h-4 w-4" /> CSV
             </Button>
             <Button variant="outline" size="sm" onClick={exportJson}>

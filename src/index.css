@@ -85,3 +85,58 @@ body {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
 }
+
+/*
+ * Print / "Save as PDF".
+ *
+ * The Reports page offers Print/PDF as a real output, so a print must produce
+ * the report — not a screenshot of the app around it. App chrome is marked
+ * `print:hidden` at the component; this handles the page itself: force the
+ * light palette (nobody wants a solid dark page from their printer), let cards
+ * break sensibly across pages, and drop shadows that render as grey mud.
+ */
+@media print {
+  :root,
+  .dark {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --border: #cbd2dd;
+    --text: #000000;
+    --muted: #444c59;
+    --profit: #0f7a56;
+    --loss: #c92f26;
+    --warning: #8a5a00;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto;
+  }
+
+  body {
+    background: #ffffff;
+    /* Keep P&L green/red meaningful on paper. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Cards and table rows should not be split down the middle. */
+  .rounded-card,
+  table,
+  tr {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}
