@@ -30,8 +30,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   ready: false,
 
   bootstrap: async () => {
-    const user = await api.auth.getCurrentUser();
-    set({ user, ready: true });
+    try {
+      const user = await api.auth.getCurrentUser();
+      set({ user, ready: true });
+    } catch (err) {
+      console.error('[auth] Failed to bootstrap session', err);
+      set({ user: null, ready: true });
+    }
 
     // Keep the store honest when the session changes outside this tab — a
     // sign-out elsewhere, an expired refresh token, or the recovery link
