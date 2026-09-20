@@ -1,13 +1,22 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
-import type { Plan, SubscriptionStatus } from '@/types';
-import { Badge, Button, Card, CardBody, CardHeader, LoadingState } from '@/components/ui';
-import { useEntitlements, useSubscribe, useSubscription } from '@/hooks/useBilling';
+import type { PaymentOrder, Plan, SubscriptionStatus } from '@/types';
+import { Badge, Button, Card, CardBody, CardHeader, LoadingState, Modal } from '@/components/ui';
+import {
+  useCancelSubscription,
+  useConfirmPayment,
+  useCreateOrder,
+  useEntitlements,
+  useFailOrder,
+  useOrders,
+  useSubscription,
+} from '@/hooks/useBilling';
 import { usePlans } from '@/hooks/usePlans';
 import { toast } from '@/store/toastStore';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { cn } from '@/utils/cn';
+import { CheckoutModal, PaymentStatusBadge } from './CheckoutModal';
 
 const STATUS_META: Record<SubscriptionStatus, { label: string; tone: 'neutral' | 'profit' | 'loss' | 'warning' | 'primary' }> = {
   free: { label: 'Free', tone: 'neutral' },
@@ -22,7 +31,17 @@ export function MembershipPanel() {
   const { entitlements, isLoading } = useEntitlements();
   const subscription = useSubscription();
   const plansQuery = usePlans();
-  const subscribe = useSubscribe();
+
+  const createOrder = useCreateOrder();
+  const confirmPayment = useConfirmPayment();
+  const failOrder = useFailOrder();
+  const cancelSubscription = useCancelSubscription();
+
+  // The order being paid for. Held here rather than in the modal so the modal
+  // stays a dumb presentation of "this order, this plan".
+  const [order, setOrder] = useState<PaymentOrder | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<Plan | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const plans = plansQuery.data ?? [];
   const monthly = plans.filter((p) => p.isActive && p.billingPeriod === 'monthly');
@@ -49,10 +68,50 @@ export function MembershipPanel() {
   const unlimited = limit < 0;
   const currentPlanId = subscription.data?.planId;
 
+  /** Step 1: open a server-priced order, then hand it to checkout. */
   const onSubscribe = (plan: Plan) => {
-    subscribe.mutate(plan.id, {
-      onSuccess: () => toast.success(`You're now on ${plan.name} (${plan.billingPeriod}).`),
-      onError: () => toast.error('Could not change plan.'),
+    createOrder.mutate(plan.id, {
+      onSuccess: (created) => {
+        setCheckoutPlan(plan);
+        setOrder(created);
+      },
+      onError: (e) =>
+        toast.error(e instanceof Error ? e.message : 'Could not start the checkout.'),
+    });
+  };
+
+  /** Step 2: the gateway succeeded — let the server verify and activate. */
+  const onPaid = (result: { paymentId: string; signature?: string }) => {
+    if (!order) return;
+    confirmPayment.mutate(
+      { orderId: order.id, result },
+      {
+        onSuccess: ({ subscription: sub }) => {
+          const paidPlan = plans.find((p) => p.id === sub.planId);
+          toast.success(`Payment received — you're on ${paidPlan?.name ?? 'your new plan'}.`);
+          setOrder(null);
+          setCheckoutPlan(null);
+        },
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : 'We could not verify that payment.'),
+      },
+    );
+  };
+
+  /** Declined or abandoned: close the order so it isn't left pending forever. */
+  const onFailed = (reason: string) => {
+    if (!order) return;
+    failOrder.mutate({ orderId: order.id, reason });
+    toast.error(reason);
+  };
+
+  const onCancel = () => {
+    cancelSubscription.mutate(undefined, {
+      onSuccess: () => {
+        setCancelOpen(false);
+        toast.info('Subscription cancelled. You keep access until the period ends.');
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not cancel.'),
     });
   };
 
@@ -86,12 +145,104 @@ export function MembershipPanel() {
               existing trades stay exactly where they are.
             </div>
           )}
+
+          {entitlements.paidActive && (
+            <div className="mt-5 flex justify-end border-t border-border pt-4">
+              <Button variant="ghost" size="sm" onClick={() => setCancelOpen(true)}>
+                Cancel subscription
+              </Button>
+            </div>
+          )}
         </CardBody>
       </Card>
 
-      <PlanGroup title="Monthly Plans" plans={monthly} currentPlanId={currentPlanId} onSubscribe={onSubscribe} pending={subscribe.isPending} />
-      <PlanGroup title="Yearly Plans" plans={yearly} currentPlanId={currentPlanId} onSubscribe={onSubscribe} pending={subscribe.isPending} savings={yearlySavings} />
+      <PlanGroup title="Monthly Plans" plans={monthly} currentPlanId={currentPlanId} onSubscribe={onSubscribe} pending={createOrder.isPending} />
+      <PlanGroup title="Yearly Plans" plans={yearly} currentPlanId={currentPlanId} onSubscribe={onSubscribe} pending={createOrder.isPending} savings={yearlySavings} />
+
+      <BillingHistory />
+
+      <CheckoutModal
+        open={order !== null}
+        order={order}
+        plan={checkoutPlan}
+        confirming={confirmPayment.isPending}
+        onPaid={onPaid}
+        onFailed={onFailed}
+        onClose={() => {
+          setOrder(null);
+          setCheckoutPlan(null);
+        }}
+      />
+
+      <Modal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title="Cancel your subscription?"
+        size="md"
+      >
+        <p className="text-sm text-text">
+          You keep everything you have paid for until{' '}
+          {subscription.data?.currentPeriodEnd
+            ? formatDate(subscription.data.currentPeriodEnd.slice(0, 10))
+            : 'the end of the period'}
+          . After that your account returns to the Free plan — your trades are never deleted.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setCancelOpen(false)}>
+            Keep my plan
+          </Button>
+          <Button variant="danger" loading={cancelSubscription.isPending} onClick={onCancel}>
+            Cancel subscription
+          </Button>
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+/** Receipts. Every order, including the ones that failed. */
+function BillingHistory() {
+  const orders = useOrders();
+  const rows = orders.data ?? [];
+
+  if (orders.isLoading || rows.length === 0) return null;
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader title="Billing history" description={`${rows.length} order${rows.length === 1 ? '' : 's'}`} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[520px] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted">
+              <th className="px-4 py-2.5 font-medium">Date</th>
+              <th className="px-3 py-2.5 font-medium">Order</th>
+              <th className="px-3 py-2.5 text-right font-medium">Amount</th>
+              <th className="px-3 py-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((o) => (
+              <tr key={o.id} className="border-b border-border/60 last:border-0">
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted">
+                  {formatDate(o.createdAt.slice(0, 10))}
+                </td>
+                <td className="px-3 py-2.5 tabular text-xs text-muted" title={o.id}>
+                  {o.providerPaymentId ?? o.id.slice(0, 8)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular text-text">
+                  {formatCurrency(o.amount, o.currency, { dp: 0 })}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span title={o.failureReason}>
+                    <PaymentStatusBadge status={o.status} />
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 

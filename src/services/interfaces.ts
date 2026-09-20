@@ -8,6 +8,8 @@ import type {
   FeedbackPatch,
   FeedbackWithAuthor,
   Instrument,
+  PaymentOrder,
+  PaymentResult,
   Plan,
   RiskSetting,
   RiskSettingPatch,
@@ -179,11 +181,46 @@ export interface IAdminRepository {
   auditLog(limit?: number): Promise<AuditEntry[]>;
 }
 
+/**
+ * Billing.
+ *
+ * There is deliberately no "subscribe(planId)" that simply grants a plan. The
+ * old one wrote to `subscriptions` straight from the browser — RLS rightly
+ * refused it, so the upgrade button never worked against a real backend, and
+ * had it worked, any user could have granted themselves Elite from the console.
+ *
+ * The flow is now: create an order (priced on the server), pay it, then submit
+ * the provider's receipt for server-side verification. Exactly the shape
+ * Razorpay needs, so switching provider touches neither the UI nor this
+ * interface — see docs/PAYMENTS.md.
+ */
 export interface IBillingRepository {
   getSubscription(userId: string): Promise<Subscription | null>;
   /** Number of trades the user has recorded (source of truth for the limit). */
   tradeCount(userId: string): Promise<number>;
-  subscribe(userId: string, planId: string): Promise<Subscription>;
+
+  /**
+   * Open an order for a plan. The amount is read from `plans` server-side —
+   * the caller never supplies a price.
+   */
+  createOrder(userId: string, planId: string): Promise<PaymentOrder>;
+
+  /**
+   * Submit the gateway's receipt. The server verifies it and, only if it holds
+   * up, activates the subscription. Returns the resulting subscription.
+   */
+  confirmPayment(
+    userId: string,
+    orderId: string,
+    result: PaymentResult,
+  ): Promise<{ order: PaymentOrder; subscription: Subscription }>;
+
+  /** Record an abandoned or declined payment against the order. */
+  failOrder(userId: string, orderId: string, reason: string): Promise<PaymentOrder>;
+
+  /** The user's own order history, newest first. */
+  orders(userId: string): Promise<PaymentOrder[]>;
+
   cancel(userId: string): Promise<Subscription>;
 }
 

@@ -466,6 +466,7 @@ export function buildSeed(): Database {
     favourites: seedFavourites(now),
     feedback: seedFeedback(now),
     auditLog: [],
+    paymentOrders: [],
     content: JSON.parse(JSON.stringify(DEFAULT_CONTENT)) as Database['content'],
   };
 }

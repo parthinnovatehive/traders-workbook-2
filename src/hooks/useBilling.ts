@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services';
 import { getEntitlements, type Entitlements } from '@/lib/entitlements';
-import type { Feature } from '@/types';
+import type { Feature, PaymentResult } from '@/types';
 import { canAccessFeature } from '@/lib/entitlements';
 import { useAuthStore } from '@/store/authStore';
 import { usePlans } from './usePlans';
@@ -51,20 +51,66 @@ export function useFeature(feature: Feature): boolean {
   );
 }
 
-export function useSubscribe() {
+/** The user's own payment history. */
+export function useOrders() {
+  const user = useAuthStore((s) => s.user);
+  return useQuery({
+    queryKey: ['orders', user?.id],
+    queryFn: () => api.billing.orders(user!.id),
+    enabled: Boolean(user),
+  });
+}
+
+/** Everything a plan change could affect. */
+function useBillingInvalidation() {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['subscription', user?.id] });
+    void qc.invalidateQueries({ queryKey: ['orders', user?.id] });
+  };
+}
+
+/**
+ * Step 1 of checkout: open an order. Creates nothing but a pending row — the
+ * plan is not granted until the payment is confirmed.
+ */
+export function useCreateOrder() {
+  const user = useAuthStore((s) => s.user);
+  const invalidate = useBillingInvalidation();
   return useMutation({
-    mutationFn: (planId: string) => api.billing.subscribe(user!.id, planId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['subscription', user?.id] }),
+    mutationFn: (planId: string) => api.billing.createOrder(user!.id, planId),
+    onSuccess: invalidate,
+  });
+}
+
+/** Step 2: submit the gateway receipt. The server activates the plan, not us. */
+export function useConfirmPayment() {
+  const user = useAuthStore((s) => s.user);
+  const invalidate = useBillingInvalidation();
+  return useMutation({
+    mutationFn: ({ orderId, result }: { orderId: string; result: PaymentResult }) =>
+      api.billing.confirmPayment(user!.id, orderId, result),
+    onSuccess: invalidate,
+  });
+}
+
+/** Records an abandoned or declined payment so the order isn't left pending. */
+export function useFailOrder() {
+  const user = useAuthStore((s) => s.user);
+  const invalidate = useBillingInvalidation();
+  return useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
+      api.billing.failOrder(user!.id, orderId, reason),
+    onSuccess: invalidate,
   });
 }
 
 export function useCancelSubscription() {
   const user = useAuthStore((s) => s.user);
-  const qc = useQueryClient();
+  const invalidate = useBillingInvalidation();
   return useMutation({
     mutationFn: () => api.billing.cancel(user!.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['subscription', user?.id] }),
+    onSuccess: invalidate,
   });
 }

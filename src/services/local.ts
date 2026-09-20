@@ -4,6 +4,7 @@ import type {
   Favourite,
   Feedback,
   FeedbackWithAuthor,
+  PaymentOrder,
   Plan,
   RiskSetting,
   SignupPoint,
@@ -721,40 +722,94 @@ const billing: IBillingRepository = {
   async tradeCount(userId) {
     return db().trades.filter((t) => t.userId === userId).length;
   },
-  async subscribe(userId, planId) {
+  /** Mirrors `create_payment_order`: priced from the plan, never the caller. */
+  async createOrder(userId, planId) {
     const data = db();
-    const plan = data.plans.find((p) => p.id === planId);
+    const plan = data.plans.find((p) => p.id === planId && p.isActive);
+    if (!plan) throw new Error('That plan is not available.');
+    if (plan.price <= 0) throw new Error('The free plan does not require payment.');
+
+    const order: PaymentOrder = {
+      id: uid(),
+      userId,
+      planId,
+      amount: plan.price,
+      currency: plan.currency,
+      status: 'created',
+      provider: 'mock',
+      createdAt: new Date().toISOString(),
+    };
+    data.paymentOrders.push(order);
+    commit();
+    return clone(order);
+  },
+
+  /**
+   * Mirrors `confirm_payment_order`, including the guards that matter: an order
+   * settles once, and only the order's owner can settle it.
+   */
+  async confirmPayment(userId, orderId, result) {
+    const data = db();
+    const order = data.paymentOrders.find((o) => o.id === orderId && o.userId === userId);
+    if (!order) throw new Error('Order not found.');
+    if (order.status === 'paid') throw new Error('That order has already been paid.');
+    if (order.status !== 'created') throw new Error('That order can no longer be paid.');
+
+    const plan = data.plans.find((p) => p.id === order.planId);
     if (!plan) throw new Error('Plan not found.');
+
     const now = new Date();
     const end = new Date(now);
     if (plan.billingPeriod === 'yearly') end.setFullYear(end.getFullYear() + 1);
     else end.setMonth(end.getMonth() + 1);
 
+    order.status = 'paid';
+    order.providerPaymentId = result.paymentId;
+    order.paidAt = now.toISOString();
+
     let sub = data.subscriptions.find((s) => s.userId === userId);
-    const status = plan.code === 'FREE' ? 'free' : 'active';
     if (sub) {
-      sub.planId = planId;
-      sub.status = status;
+      sub.planId = order.planId;
+      sub.status = 'active';
       sub.currentPeriodStart = now.toISOString();
-      sub.currentPeriodEnd = plan.code === 'FREE' ? undefined : end.toISOString();
+      sub.currentPeriodEnd = end.toISOString();
     } else {
       sub = {
         id: uid(),
         userId,
-        planId,
-        status,
+        planId: order.planId,
+        status: 'active',
         currentPeriodStart: now.toISOString(),
-        currentPeriodEnd: plan.code === 'FREE' ? undefined : end.toISOString(),
+        currentPeriodEnd: end.toISOString(),
       };
       data.subscriptions.push(sub);
     }
     commit();
-    return clone(sub);
+    return { order: clone(order), subscription: clone(sub) };
   },
+
+  async failOrder(userId, orderId, reason) {
+    const data = db();
+    const order = data.paymentOrders.find((o) => o.id === orderId && o.userId === userId);
+    if (!order || order.status !== 'created') throw new Error('Order not found.');
+    order.status = 'failed';
+    order.failureReason = reason.slice(0, 500);
+    commit();
+    return clone(order);
+  },
+
+  async orders(userId) {
+    return clone(
+      db()
+        .paymentOrders.filter((o) => o.userId === userId)
+        .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    );
+  },
+
   async cancel(userId) {
     const data = db();
     const sub = data.subscriptions.find((s) => s.userId === userId);
-    if (!sub) throw new Error('No subscription found.');
+    if (!sub) throw new Error('No subscription to cancel.');
     sub.status = 'canceled';
     commit();
     return clone(sub);

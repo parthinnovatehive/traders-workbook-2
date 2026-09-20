@@ -16,6 +16,9 @@ import type {
   InstrumentCategory,
   Market,
   MistakeCode,
+  PaymentOrder,
+  PaymentProvider,
+  PaymentStatus,
   Plan,
   PlanCode,
   PsychCode,
@@ -32,6 +35,7 @@ import type {
   TradingMode,
   User,
 } from '@/types';
+import { PAYMENT_STATUSES } from '@/types';
 import { uid } from '@/utils/id';
 import { canCreateStrategy, canCreateTrade, customStrategyLimit } from '@/lib/entitlements';
 import { DEFAULT_CONTENT, withContentDefaults } from '@/config/content';
@@ -203,6 +207,21 @@ interface SiteContentRow {
   updated_at: string | null;
 }
 
+interface PaymentOrderRow {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  provider: string;
+  provider_order_id: string | null;
+  provider_payment_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  paid_at: string | null;
+}
+
 interface SubscriptionRow {
   id: string;
   user_id: string;
@@ -370,6 +389,33 @@ function toRisk(r: RiskRow): RiskSetting {
     dailyLossLimit: Number(r.daily_loss_limit),
     maxDrawdownPct: Number(r.max_drawdown_pct),
     maxPositionPct: Number(r.max_position_pct),
+  };
+}
+
+/**
+ * Which gateway new orders are opened against. Flipping this to `razorpay`
+ * makes `confirm_payment_order` demand a signature, so it cannot be switched on
+ * before the verifying Edge Function exists — see docs/PAYMENTS.md.
+ */
+const PAYMENT_PROVIDER: PaymentProvider =
+  import.meta.env.VITE_PAYMENT_PROVIDER === 'razorpay' ? 'razorpay' : 'mock';
+
+function toPaymentOrder(r: PaymentOrderRow): PaymentOrder {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    planId: r.plan_id,
+    amount: Number(r.amount),
+    currency: r.currency,
+    status: (PAYMENT_STATUSES as readonly string[]).includes(r.status)
+      ? (r.status as PaymentStatus)
+      : 'created',
+    provider: r.provider === 'razorpay' ? 'razorpay' : 'mock',
+    providerOrderId: r.provider_order_id ?? undefined,
+    providerPaymentId: r.provider_payment_id ?? undefined,
+    failureReason: r.failure_reason ?? undefined,
+    createdAt: r.created_at,
+    paidAt: r.paid_at ?? undefined,
   };
 }
 
@@ -1336,48 +1382,76 @@ const billing: IBillingRepository = {
     return count ?? 0;
   },
 
-  async subscribe(userId, planId) {
-    const sb = getSupabase();
-    const { data: planData, error: planError } = await sb
-      .from('plans')
-      .select('*')
-      .eq('id', planId)
-      .single();
-    const planRow = unwrap(planData, planError, 'Plan not found') as PlanRow;
-
-    const now = new Date();
-    const end = new Date(now);
-    if (planRow.billing_period === 'yearly') end.setFullYear(end.getFullYear() + 1);
-    else end.setMonth(end.getMonth() + 1);
-    const status = planRow.code === 'FREE' ? 'free' : 'active';
-
-    const { data, error } = await sb
-      .from('subscriptions')
-      .upsert(
-        {
-          user_id: userId,
-          plan_id: planId,
-          status,
-          current_period_start: now.toISOString(),
-          current_period_end: planRow.code === 'FREE' ? null : end.toISOString(),
-        },
-        { onConflict: 'user_id' },
-      )
-      .select()
-      .single();
-    const updated = unwrap(data, error, 'Failed to update subscription');
-    return toSubscription(updated as SubscriptionRow);
+  /**
+   * Opens an order. The amount is set by `create_payment_order` from the plans
+   * table — deliberately not passed from here, so a tampered client cannot buy
+   * Elite for ₹1.
+   *
+   * With Razorpay this call moves to an Edge Function that also creates the
+   * order with the gateway (its API needs the key secret, which must never
+   * reach the browser) and returns the same shape plus `providerOrderId`.
+   */
+  async createOrder(_userId, planId) {
+    const { data, error } = await getSupabase().rpc('create_payment_order', {
+      p_plan_id: planId,
+      p_provider: PAYMENT_PROVIDER,
+    });
+    if (error) throw new Error(error.message);
+    return toPaymentOrder(data as PaymentOrderRow);
   },
 
-  async cancel(userId) {
-    const { data, error } = await getSupabase()
-      .from('subscriptions')
-      .update({ status: 'canceled' })
-      .eq('user_id', userId)
-      .select()
+  /**
+   * Submits the gateway receipt. `confirm_payment_order` verifies it and is the
+   * only thing in the system allowed to write an active subscription.
+   */
+  async confirmPayment(_userId, orderId, result) {
+    const sb = getSupabase();
+    const { data, error } = await sb.rpc('confirm_payment_order', {
+      p_order_id: orderId,
+      p_provider_payment_id: result.paymentId,
+      p_signature: result.signature ?? null,
+    });
+    if (error) throw new Error(error.message);
+
+    // Re-read the order so the caller sees the settled row (paid_at, payment id)
+    // rather than the pre-payment one it was holding.
+    const { data: orderRow } = await sb
+      .from('payment_orders')
+      .select('*')
+      .eq('id', orderId)
       .single();
-    const updated = unwrap(data, error, 'No subscription found');
-    return toSubscription(updated as SubscriptionRow);
+
+    return {
+      order: toPaymentOrder(orderRow as PaymentOrderRow),
+      subscription: toSubscription(data as SubscriptionRow),
+    };
+  },
+
+  async failOrder(_userId, orderId, reason) {
+    const { data, error } = await getSupabase().rpc('fail_payment_order', {
+      p_order_id: orderId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+    return toPaymentOrder(data as PaymentOrderRow);
+  },
+
+  async orders(userId: string) {
+    const { data, error } = await getSupabase()
+      .from('payment_orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    const rows = unwrap(data, error, 'Failed to load billing history') as PaymentOrderRow[];
+    return rows.map(toPaymentOrder);
+  },
+
+  async cancel(_userId) {
+    // Users cannot UPDATE `subscriptions` (admin-only policy), so cancellation
+    // goes through a SECURITY DEFINER function scoped to the caller.
+    const { data, error } = await getSupabase().rpc('cancel_my_subscription');
+    if (error) throw new Error(error.message);
+    return toSubscription(data as SubscriptionRow);
   },
 };
 
