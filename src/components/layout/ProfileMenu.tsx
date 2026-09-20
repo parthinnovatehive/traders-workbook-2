@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, MessageSquarePlus, Shield, User as UserIcon } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { FeedbackModal } from '@/components/feedback/FeedbackModal';
+import { useLogout } from '@/hooks/useLogout';
 import { useAuthStore } from '@/store/authStore';
-import { toast } from '@/store/toastStore';
 import { cn } from '@/utils/cn';
 
 export function ProfileMenu() {
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
+  const logout = useLogout();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -55,11 +55,9 @@ export function ProfileMenu() {
             icon={LogOut}
             label="Log out"
             tone="loss"
-            onClick={async () => {
+            onClick={() => {
               setOpen(false);
-              await logout();
-              toast.info('Logged out.');
-              navigate(ROUTES.home);
+              void logout();
             }}
           />
         </div>

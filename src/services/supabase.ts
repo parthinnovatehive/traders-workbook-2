@@ -1,4 +1,4 @@
-import type { PostgrestError, Session } from '@supabase/supabase-js';
+import type { AuthError, PostgrestError, Session } from '@supabase/supabase-js';
 import type {
   AdminOverviewStats,
   AdminUserRow,
@@ -470,20 +470,59 @@ function unwrap<T>(data: T | null | undefined, error: PostgrestError | null, mes
 }
 
 /**
- * The profile row for an authenticated user. `handle_new_user` creates it on
- * signup, but a user created straight in the Supabase dashboard won't have one —
- * so fall back to a minimal profile rather than logging them out.
+ * The profile row for an authenticated user.
+ *
+ * `handle_new_user` creates it at signup, but an account created before that
+ * trigger existed — or while the project was misconfigured — can be missing
+ * one. This used to return a synthetic in-memory profile in that case, which
+ * looked harmless and was not: the stand-in is never persisted, so
+ * `onboardedAt` was always undefined and the first-run wizard reopened on every
+ * single visit, while `completeOnboarding` updated zero rows and failed
+ * silently. It also pinned `role` to 'user', so an admin missing a profile row
+ * would quietly lose their admin access.
+ *
+ * So: self-heal by writing the row, the same way `accounts.list` and
+ * `risk.get` already do for their tables.
  */
 async function fetchProfile(session: Session): Promise<User | null> {
-  const { data, error } = await getSupabase()
+  const sb = getSupabase();
+  const { data, error } = await sb
     .from('profiles')
     .select('*')
     .eq('id', session.user.id)
     .maybeSingle();
 
-  if (error) return null;
+  if (error) {
+    console.error('[auth] Could not read the profile row.', error);
+    return null;
+  }
   if (data) return toUser(data as ProfileRow);
 
+  console.warn(
+    `[auth] No profiles row for ${session.user.id} — creating one. ` +
+      'If this recurs for new signups, the handle_new_user trigger on auth.users is not firing.',
+  );
+
+  const meta = (session.user.user_metadata ?? {}) as Record<string, unknown>;
+  const metaName = typeof meta.display_name === 'string' ? meta.display_name.trim() : '';
+  const metaPhone = typeof meta.phone === 'string' ? meta.phone.trim() : '';
+
+  const { data: created, error: createError } = await sb
+    .from('profiles')
+    .insert({
+      id: session.user.id,
+      email: session.user.email ?? '',
+      display_name: metaName || session.user.email?.split('@')[0] || 'Trader',
+      phone: metaPhone || null,
+    })
+    .select()
+    .single();
+
+  if (created && !createError) return toUser(created as ProfileRow);
+
+  // Last resort: let them into the app rather than bouncing them to login, but
+  // make the cause visible instead of silently degrading forever.
+  console.error('[auth] Could not create the missing profile row.', createError);
   return {
     id: session.user.id,
     email: session.user.email ?? '',
@@ -557,6 +596,72 @@ function toSiteContent(r: SiteContentRow): SiteContent {
 /* Auth — Supabase Auth. No passwords, sessions or ids are handled by us.      */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Turn a Supabase auth failure into something true.
+ *
+ * This used to collapse every sign-in error into "Invalid email or password",
+ * which meant a misconfigured project, a rate limit and an actual typo were
+ * indistinguishable — someone could spend an hour re-checking a password that
+ * was never the problem. Only genuine credential failures get the deliberately
+ * vague message now, because that one protects against account enumeration.
+ *
+ * Project-level misconfiguration is reported plainly to the console (where the
+ * developer will look) and vaguely to the user (who can do nothing about it).
+ */
+function authErrorMessage(error: AuthError, context: 'login' | 'signup'): string {
+  switch (error.code) {
+    // Real credential failure. Stays vague on purpose.
+    case 'invalid_credentials':
+      return 'Invalid email or password.';
+
+    case 'email_not_confirmed':
+      return 'Please confirm your email address first — check your inbox.';
+
+    case 'user_already_exists':
+    case 'identity_already_exists':
+      return 'An account with that email already exists.';
+
+    // The server enforces its own policy; its message names the requirement.
+    case 'weak_password':
+      return error.message;
+
+    case 'over_request_rate_limit':
+      return 'Too many attempts. Please wait a minute and try again.';
+
+    case 'over_email_send_rate_limit':
+      return 'Too many emails requested. Please wait a while and try again.';
+
+    // Project configuration, not anything the visitor did.
+    case 'email_provider_disabled':
+    case 'provider_disabled':
+      console.error(
+        '[auth] The Email provider is disabled for this Supabase project. ' +
+          'Enable it at Authentication → Sign In / Providers → Email ' +
+          '("Enable email provider" and "Enable email signups").',
+      );
+      return 'Email sign-in is currently unavailable. Please try again later.';
+
+    case 'signup_disabled':
+      console.error(
+        '[auth] New sign-ups are disabled for this Supabase project. ' +
+          'Re-enable "Allow new users to sign up" under Authentication → Sign In / Providers.',
+      );
+      return 'New accounts are closed at the moment.';
+
+    default:
+      // Network failure, 5xx, or something new. Never claim it was the
+      // password — that sends people down the wrong path.
+      console.error(`[auth] Unhandled ${context} error`, {
+        code: error.code,
+        status: error.status,
+        message: error.message,
+      });
+      return context === 'login'
+        ? "Couldn't sign you in just now. Please try again."
+        : "Couldn't create your account just now. Please try again.";
+  }
+}
+
 const auth: IAuthService = {
   async getCurrentUser() {
     const { data } = await getSupabase().auth.getSession();
@@ -566,13 +671,7 @@ const auth: IAuthService = {
 
   async login(email, password) {
     const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
-    if (error) {
-      // Don't leak whether the address exists.
-      if (error.message.toLowerCase().includes('email not confirmed')) {
-        throw new Error('Please confirm your email address first — check your inbox.');
-      }
-      throw new Error('Invalid email or password.');
-    }
+    if (error) throw new Error(authErrorMessage(error, 'login'));
     if (!data.session) throw new Error('Could not start a session. Please try again.');
     const user = await fetchProfile(data.session);
     if (!user) throw new Error('Account not found.');
@@ -595,13 +694,7 @@ const auth: IAuthService = {
       },
     });
 
-    if (error) {
-      const message = error.message.toLowerCase();
-      if (message.includes('already registered') || message.includes('already exists')) {
-        throw new Error('An account with that email already exists.');
-      }
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(authErrorMessage(error, 'signup'));
 
     // No session => the project has email confirmation on. Caller shows a
     // "check your inbox" screen instead of navigating into the app.

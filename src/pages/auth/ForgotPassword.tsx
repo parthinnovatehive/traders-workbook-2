@@ -6,6 +6,8 @@ import { Button, Field, Input } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
 import { AuthShell } from './AuthShell';
 
+const SUPPORT_EMAIL = 'support@tradersworkbook.app';
+
 export default function ForgotPassword() {
   const requestPasswordReset = useAuthStore((s) => s.requestPasswordReset);
   const [email, setEmail] = useState('');
@@ -40,16 +42,26 @@ export default function ForgotPassword() {
             <MailCheck className="h-6 w-6" />
           </span>
           <p className="text-sm text-text">
-            We sent a password reset link to <span className="font-medium">{email}</span>.
+            If <span className="font-medium">{email}</span> has an account, a reset link is on its
+            way. It expires in one hour.
           </p>
-          <p className="text-xs text-muted">The link expires in one hour.</p>
+          {/* Never states outright that mail was sent. Delivery depends on a
+              configured SMTP provider, and until one exists nothing leaves the
+              project at all — so this always offers a route that works. */}
+          <p className="text-xs text-muted">
+            Nothing arrives within a few minutes? Check spam, then email{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary hover:underline">
+              {SUPPORT_EMAIL}
+            </a>{' '}
+            from that address and we&apos;ll reset it for you.
+          </p>
         </div>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell title="Reset your password" subtitle="We'll email you a link to set a new one." footer={footer}>
+    <AuthShell title="Reset your password" subtitle="We'll send a link to set a new one." footer={footer}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

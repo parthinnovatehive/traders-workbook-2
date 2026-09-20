@@ -3,9 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MailCheck } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { ACCOUNT_CURRENCIES } from '@/constants/currencies';
-import { Button, Field, Input, Select } from '@/components/ui';
+import { Button, Field, Input, PasswordInput, Select } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
+import { landingRouteFor } from '@/routes/landing';
 import { AuthShell } from './AuthShell';
 
 export default function Register() {
@@ -45,7 +46,9 @@ export default function Register() {
         return;
       }
       toast.success('Account created. Welcome!');
-      navigate(ROUTES.app);
+      // A brand-new account is always a trader, but route through the shared
+      // helper anyway so this page can never disagree with the others.
+      navigate(landingRouteFor(signedIn), { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
@@ -110,7 +113,7 @@ export default function Register() {
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
         </Field>
         <Field label="Password" required hint="At least 8 characters">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         </Field>
 
         {/* Two books, two capital bases — ROI and drawdown are computed against

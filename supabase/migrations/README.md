@@ -94,15 +94,58 @@ a price or a P&L figure.
 
 ### Authentication → Providers → Email
 - **Enable email provider**: on
-- **Confirm email**: **on**. The app already handles the no-session case and
-  shows a "check your inbox" screen.
+- **Confirm email**: **OFF while there is no custom SMTP.** See below — this is
+  a deliberate trade-off, not an oversight.
 - **Minimum password length**: 8 (the signup form enforces this client-side too)
+
+#### Why confirmation is off
+
+Supabase's built-in email sender is capped at **2 messages per hour per
+project**, and it will only deliver to addresses belonging to members of your
+Supabase organisation. That cap is identical on the Free and Pro plans — it is a
+property of the built-in sender, not of the billing tier.
+
+So with confirmation **on** and no custom SMTP, a stranger cannot sign up at all:
+their confirmation mail is rejected as "Email address not authorized", and the
+third attempt in any hour fails with a 429 regardless.
+
+With confirmation **off**, `signUp` returns a session immediately, the app walks
+the user straight into the dashboard, and **no email is sent at any point**.
+Signups are limited only by the ordinary 30-requests-per-5-minutes-per-IP rule.
+
+The cost of leaving it off:
+- Anyone can register with an address they do not own. Nothing in the product
+  emails users, so the blast radius is a junk account rather than a hijacked one.
+- **Password reset cannot work**, because it is an email. A user who forgets
+  their password has no self-service way back in — see below.
+
+#### Turning it back on (do this once you have SMTP)
+
+Configure **Authentication → SMTP Settings** against any transactional provider
+(Resend, Brevo and Mailgun all have free tiers in the thousands of mails per
+month, and custom SMTP is included on the Supabase Free plan). Then:
+
+1. Raise the email cap under **Authentication → Rate Limits** to match your
+   provider's allowance — it stays at 2/hour until you do.
+2. Switch **Confirm email** back on. No code change is needed: `register()`
+   already returns `null` when there is no session, and `Register.tsx` shows the
+   "check your inbox" screen for it.
+3. Disable click-tracking on your provider for these messages. Link rewriting
+   breaks Supabase's single-use confirmation and recovery tokens.
 
 ### Authentication → URL Configuration
 - **Site URL**: your production URL (e.g. `https://app.yourdomain.com`)
-- **Redirect URLs**: add both of these, or password reset will bounce:
+- **Redirect URLs**: add both of these, or password reset will bounce once you
+  have SMTP and the emails actually start arriving:
   - `http://localhost:5173/reset-password`
   - `https://<your-production-domain>/reset-password`
+
+### Locked-out users, until SMTP exists
+
+With no mail provider, **the "Forgot password" flow sends nothing**. The screen
+is honest about it and points the user at support. To let someone back in,
+either send them a one-time link from **Authentication → Users → ⋯ → Send
+recovery**, or set a new password for them in place from the same menu.
 
 ### Make yourself an admin
 

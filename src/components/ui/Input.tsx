@@ -1,10 +1,12 @@
 import {
   forwardRef,
+  useState,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 const baseField =
@@ -32,6 +34,53 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
     );
   },
 );
+
+/**
+ * Password field with a reveal toggle.
+ *
+ * Typing a password you cannot see is the main cause of failed logins, and it
+ * is worse here than usual: signup enforces 8+ characters and the confirm
+ * fields reject a silent typo only after submit.
+ *
+ * `type` is deliberately not accepted — this component owns it. Everything else
+ * (autoComplete, value, onChange, required) passes straight through, so
+ * password managers behave exactly as they do on a plain input.
+ */
+export const PasswordInput = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
+>(function PasswordInput({ className, disabled, ...props }, ref) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <input
+        ref={ref}
+        type={visible ? 'text' : 'password'}
+        disabled={disabled}
+        // Room for the button so a long password never runs underneath it.
+        className={cn(baseField, 'pr-10', className)}
+        {...props}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        disabled={disabled}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-pressed={visible}
+        title={visible ? 'Hide password' : 'Show password'}
+        className={cn(
+          'absolute right-0 top-0 grid h-full w-10 place-items-center rounded-r-lg text-muted',
+          'transition-colors hover:text-text focus-visible:outline-none',
+          'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50',
+          'disabled:pointer-events-none disabled:opacity-60',
+        )}
+      >
+        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+});
 
 interface FieldProps {
   label: string;

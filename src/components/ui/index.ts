@@ -3,7 +3,7 @@ export type { ButtonProps } from './Button';
 export { Card, CardHeader, CardBody } from './Card';
 export { Badge } from './Badge';
 export { MetricCard } from './MetricCard';
-export { Input, Textarea, Select, Field } from './Input';
+export { Input, PasswordInput, Textarea, Select, Field } from './Input';
 export { Tabs } from './Tabs';
 export type { TabItem } from './Tabs';
 export { Modal } from './Modal';

@@ -5,7 +5,7 @@ import { LoadingState } from '@/components/ui';
 import { AppShell } from '@/components/layout/AppShell';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MarketingLayout } from '@/components/layout/MarketingLayout';
-import { AdminRoute, ProtectedRoute } from './guards';
+import { AdminRoute, GuestRoute, ProtectedRoute } from './guards';
 
 // Lazy-loaded routes → each page becomes its own chunk, keeping the initial
 // (marketing/auth) load small and deferring heavy chart code until needed.
@@ -66,9 +66,11 @@ export const router = createBrowserRouter([
       { path: ROUTES.contact, element: suspend(<Contact />) },
     ],
   },
-  { path: ROUTES.login, element: suspend(<Login />) },
-  { path: ROUTES.register, element: suspend(<Register />) },
-  { path: ROUTES.forgotPassword, element: suspend(<ForgotPassword />) },
+  { path: ROUTES.login, element: <GuestRoute>{suspend(<Login />)}</GuestRoute> },
+  { path: ROUTES.register, element: <GuestRoute>{suspend(<Register />)}</GuestRoute> },
+  { path: ROUTES.forgotPassword, element: <GuestRoute>{suspend(<ForgotPassword />)}</GuestRoute> },
+  // NOT guest-gated: the recovery link signs the user in, so a guest guard here
+  // would redirect them away before they can set a new password.
   { path: ROUTES.resetPassword, element: suspend(<ResetPassword />) },
   {
     element: (

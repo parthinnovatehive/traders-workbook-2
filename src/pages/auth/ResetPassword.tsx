@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/constants/routes';
-import { Button, Field, Input } from '@/components/ui';
+import { Button, Field, PasswordInput } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
+import { landingRouteFor } from '@/routes/landing';
 import { AuthShell } from './AuthShell';
 
 /**
@@ -44,7 +45,7 @@ export default function ResetPassword() {
     try {
       await updatePassword(password);
       toast.success('Password updated. You are signed in.');
-      navigate(ROUTES.app);
+      navigate(landingRouteFor(user), { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not update your password.');
     } finally {
@@ -81,10 +82,10 @@ export default function ResetPassword() {
         className="space-y-4"
       >
         <Field label="New password" required hint="At least 8 characters">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" autoFocus />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" autoFocus />
         </Field>
         <Field label="Confirm new password" required>
-          <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+          <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
         </Field>
         <Button type="submit" className="w-full" loading={busy} disabled={!user}>
           Update password

@@ -1,9 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { LogOut, X } from 'lucide-react';
 import { APP_NAV } from '@/constants/nav';
+import { isLocalDataSource } from '@/services';
+import { useLogout } from '@/hooks/useLogout';
 import { useUiStore } from '@/store/uiStore';
 import { cn } from '@/utils/cn';
 import { Brand } from './Brand';
+
+const APP_VERSION = 'v0.1';
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   return (
@@ -31,6 +35,36 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/**
+ * Sign-out lives here as well as in the profile menu. The menu hides it behind
+ * an avatar with no label, which is the first place people look last.
+ */
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
+  const logout = useLogout();
+
+  return (
+    <div className="border-t border-border p-3">
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate?.();
+          void logout();
+        }}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-loss/10 hover:text-loss"
+      >
+        <LogOut className="h-4 w-4 shrink-0" />
+        Log out
+      </button>
+      <p className="px-3 pt-2 text-[11px] text-muted">
+        {APP_VERSION}
+        {/* Only true against the in-browser mock — never label a real user's
+            own trades as demo data. */}
+        {isLocalDataSource && ' · Demo data'}
+      </p>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const open = useUiStore((s) => s.sidebarOpen);
   const setOpen = useUiStore((s) => s.setSidebarOpen);
@@ -38,14 +72,17 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex">
+      {/* Pinned to the viewport, not stretched to content height. Otherwise the
+          nav and the footer below it scroll away with the page, and on a long
+          dashboard "Log out" ends up thousands of pixels down. */}
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface print:hidden lg:sticky lg:top-0 lg:flex lg:h-screen">
         <div className="flex h-16 items-center px-5">
           <Brand />
         </div>
         <div className="flex-1 overflow-y-auto py-2">
           <NavItems />
         </div>
-        <div className="px-5 py-4 text-[11px] text-muted">v0.1 · Demo data</div>
+        <SidebarFooter />
       </aside>
 
       {/* Mobile drawer */}
@@ -67,6 +104,7 @@ export function Sidebar() {
             <div className="flex-1 overflow-y-auto py-2">
               <NavItems onNavigate={() => setOpen(false)} />
             </div>
+            <SidebarFooter onNavigate={() => setOpen(false)} />
           </aside>
         </div>
       )}

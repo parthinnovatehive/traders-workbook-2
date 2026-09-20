@@ -1,16 +1,24 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
-import { Button, Field, Input } from '@/components/ui';
+import { Button, Field, Input, PasswordInput } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import { DEMO_EMAIL, DEMO_PASSWORD, isLocalDataSource } from '@/services';
+import { resolvePostAuthRoute } from '@/routes/landing';
 import { AuthShell } from './AuthShell';
 
 export default function Login() {
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Set by ProtectedRoute when it bounced someone off a page they asked for.
+  // Nothing read it until now, so an expired session always dumped you on the
+  // dashboard no matter where you had been headed.
+  const from = (location.state as { from?: string } | null)?.from;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -18,9 +26,11 @@ export default function Login() {
   const submit = async (e: string, p: string) => {
     setBusy(true);
     try {
-      await login(e, p);
-      toast.success('Welcome back.');
-      navigate(ROUTES.app);
+      const user = await login(e, p);
+      toast.success(user.role === 'admin' ? 'Welcome back, admin.' : 'Welcome back.');
+      // Admins land in the admin section; everyone else in the app — unless
+      // they were deep-linking somewhere specific, which wins either way.
+      navigate(resolvePostAuthRoute(user, from), { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Login failed.');
     } finally {
@@ -52,7 +62,7 @@ export default function Login() {
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
         </Field>
         <Field label="Password" required>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
         </Field>
         <div className="flex justify-end">
           <Link to={ROUTES.forgotPassword} className="text-xs text-muted hover:text-primary hover:underline">

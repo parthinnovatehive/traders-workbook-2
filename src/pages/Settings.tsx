@@ -21,6 +21,7 @@ import {
   Input,
   LoadingState,
   Modal,
+  PasswordInput,
   Select,
 } from '@/components/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -87,10 +88,10 @@ function SecurityCard() {
       <CardHeader title="Security" description="Change your password" />
       <CardBody className="space-y-4">
         <Field label="New password" hint="At least 8 characters">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         </Field>
         <Field label="Confirm new password">
-          <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+          <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
         </Field>
         <div className="flex justify-end">
           <Button loading={saving} onClick={save} disabled={!password}>
