@@ -392,6 +392,25 @@ function toRisk(r: RiskRow): RiskSetting {
 }
 
 /**
+ * A function that was never deployed fails as a CORS error, not a 404.
+ *
+ * The browser sends a preflight, Supabase's gateway answers 404 without CORS
+ * headers, and the browser refuses to reveal the status — so supabase-js throws
+ * `FunctionsFetchError: Failed to send a request to the Edge Function`, which
+ * reads like a network blip. The real cause is almost always that
+ * `supabase functions deploy` has not been run.
+ *
+ * Users get a calm message; whoever is holding the console gets the fix.
+ */
+const NOT_DEPLOYED_HINT =
+  'Payments are unavailable: the payment Edge Functions are not reachable.\n' +
+  'If this is your deployment, they are most likely not deployed yet:\n' +
+  '  supabase link --project-ref <your-project-ref>\n' +
+  '  supabase functions deploy payments-create-order payments-verify payments-fail-order\n' +
+  '  supabase functions deploy payments-webhook\n' +
+  'See docs/PAYMENTS.md.';
+
+/**
  * Edge Functions return `{ error: "..." }` with a non-2xx status, but
  * supabase-js surfaces only "Edge Function returned a non-2xx status code".
  * Dig the real message out of the response so the user sees "Amount mismatch"
@@ -399,6 +418,14 @@ function toRisk(r: RiskRow): RiskSetting {
  */
 async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
   const context = (error as { context?: Response })?.context;
+
+  // A 404 reaches us intact only from a non-browser caller; from a browser the
+  // same condition arrives as the fetch failure handled below.
+  if (context?.status === 404) {
+    console.error(NOT_DEPLOYED_HINT, error);
+    return 'Payments are not available yet. Please try again later.';
+  }
+
   if (context && typeof context.json === 'function') {
     try {
       const body = (await context.json()) as { error?: string };
@@ -407,6 +434,12 @@ async function edgeErrorMessage(error: unknown, fallback: string): Promise<strin
       // non-JSON body — fall through
     }
   }
+
+  if ((error as Error | undefined)?.name === 'FunctionsFetchError') {
+    console.error(NOT_DEPLOYED_HINT, error);
+    return 'Payments are not available yet. Please try again later.';
+  }
+
   return error instanceof Error && error.message ? error.message : fallback;
 }
 

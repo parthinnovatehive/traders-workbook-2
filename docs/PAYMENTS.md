@@ -67,15 +67,35 @@ exists — see `vite.config.ts`.
 
 ### 3. Deploy the functions
 
+Link the repo to your project first — `secrets set` and `functions deploy` both
+need it, and neither is useful until the functions actually exist on the server:
+
 ```bash
-supabase functions deploy payments-create-order
-supabase functions deploy payments-verify
-supabase functions deploy payments-fail-order
-supabase functions deploy payments-webhook --no-verify-jwt
+supabase login
+supabase link --project-ref trpnggoqaoaswksthopx
 ```
 
-`--no-verify-jwt` on the webhook only: Razorpay does not send a Supabase token,
-and the HMAC is what authenticates it. Everything else requires a signed-in user.
+```bash
+supabase functions deploy payments-create-order payments-verify payments-fail-order
+supabase functions deploy payments-webhook
+```
+
+No `--no-verify-jwt` flag is needed: `supabase/config.toml` declares
+`verify_jwt = false` for `payments-webhook` and `true` for the rest, so the
+setting survives a redeploy by someone who has never read this page. Razorpay
+does not send a Supabase token — the HMAC over the raw body authenticates it.
+
+**Until this step runs, upgrading fails with a CORS error, not a 404.** The
+gateway answers the browser's preflight with a 404 carrying no CORS headers, so
+the browser reports "Response to preflight request doesn't pass access control
+check" and hides the status. Confirm what is really happening with:
+
+```bash
+curl -i -X OPTIONS https://<project-ref>.supabase.co/functions/v1/payments-create-order
+```
+
+`{"code":"NOT_FOUND"}` means not deployed. A `200` means deployed, and a CORS
+error then points at `ALLOWED_ORIGIN` instead.
 
 ### 4. Register the webhook
 
@@ -87,8 +107,25 @@ Razorpay Dashboard → Settings → Webhooks → Add:
 
 ### 5. Test with test keys first
 
-Use `rzp_test_…` keys and Razorpay's test card `4111 1111 1111 1111`, any future
-expiry, any CVV. Verify all of:
+Use `rzp_test_…` keys and a **domestic** test instrument. Indian Razorpay
+accounts have international cards disabled by default, so the widely-copied
+`4111 1111 1111 1111` is rejected with "International cards are not supported"
+before it ever reaches our code — a confusing failure that looks like a broken
+integration but is not one.
+
+| Method | Value |
+|---|---|
+| UPI success | `success@razorpay` |
+| UPI failure | `failure@razorpay` |
+| Visa debit | `4100 2800 0000 1007` |
+| Mastercard credit | `5555 5100 0008 1006` |
+| RuPay credit | `6527 6589 0000 1005` |
+
+Random CVV, any future expiry. On the simulated bank page an OTP of 4–10 digits
+succeeds and one under 4 digits fails. In test mode a *cancelled* UPI payment
+records as successful, so test cancellation by closing the checkout instead.
+
+Verify all of:
 
 - a successful payment grants the plan and appears in Billing history
 - closing the checkout marks the order `failed`, grants nothing
