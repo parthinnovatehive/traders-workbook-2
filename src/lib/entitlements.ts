@@ -17,6 +17,21 @@ export function resolvePlan(
 
 const freePlan = (plans: readonly Plan[]): Plan | undefined => plans.find((p) => p.code === 'FREE');
 
+/**
+ * True once `currentPeriodEnd` is in the past.
+ *
+ * Single definition of "lapsed", so the badge on the membership page and the
+ * limits actually being enforced can never disagree about it.
+ */
+export function hasLapsed(
+  subscription: Subscription | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!subscription?.currentPeriodEnd) return false;
+  const end = new Date(subscription.currentPeriodEnd).getTime();
+  return !Number.isNaN(end) && end < now.getTime();
+}
+
 /** An active, non-expired paid or trial subscription. */
 export function isSubscriptionActive(
   subscription: Subscription | null | undefined,
@@ -24,8 +39,61 @@ export function isSubscriptionActive(
 ): boolean {
   if (!subscription) return false;
   if (subscription.status !== 'active' && subscription.status !== 'trialing') return false;
-  if (subscription.currentPeriodEnd && new Date(subscription.currentPeriodEnd) < now) return false;
-  return true;
+  return !hasLapsed(subscription, now);
+}
+
+/** Whole days until the period ends. Negative once it has passed. */
+export function daysUntilExpiry(
+  subscription: Subscription | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!subscription?.currentPeriodEnd) return null;
+  const end = new Date(subscription.currentPeriodEnd).getTime();
+  if (Number.isNaN(end)) return null;
+  return Math.ceil((end - now.getTime()) / 86_400_000);
+}
+
+/** How near the end of a period counts as "renew soon". */
+export const EXPIRING_SOON_DAYS = 7;
+
+export type BillingPhase =
+  | 'free'
+  | 'trialing'
+  | 'active'
+  | 'expiring_soon'
+  | 'past_due'
+  | 'canceled'
+  | 'expired';
+
+/**
+ * What to tell the user, as distinct from what is stored.
+ *
+ * Nothing ever writes `status = 'expired'`. No cron runs, and the payment
+ * functions only touch the row when a payment lands — so the day after a plan
+ * runs out the row still says `active`, while `isPaidActive` and the
+ * `enforce_trade_limit` trigger have both already dropped the user to Free
+ * limits. Rendering `subscription.status` directly is how this page showed a
+ * green "Active" badge to someone who had silently lost their paid features.
+ *
+ * Derive the phase from the dates instead; the stored status only decides
+ * between the cases the dates cannot distinguish.
+ */
+export function billingPhase(
+  subscription: Subscription | null | undefined,
+  plans: readonly Plan[],
+  now: Date = new Date(),
+): BillingPhase {
+  const plan = resolvePlan(subscription, plans);
+  if (!subscription || !plan || plan.code === 'FREE') return 'free';
+
+  if (hasLapsed(subscription, now) || subscription.status === 'expired') return 'expired';
+  if (subscription.status === 'canceled') return 'canceled';
+  if (subscription.status === 'past_due') return 'past_due';
+  if (subscription.status === 'trialing') return 'trialing';
+
+  const days = daysUntilExpiry(subscription, now);
+  if (days !== null && days <= EXPIRING_SOON_DAYS) return 'expiring_soon';
+  return 'active';
 }
 
 /** Has an ACTIVE paid (non-free) plan. */

@@ -44,7 +44,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // whose every request 401s.
     unsubscribe?.();
     unsubscribe = api.auth.onAuthStateChange((next) => {
+      const previous = get().user;
       set({ user: next, ready: true });
+
+      // A session can end without anyone pressing "Log out" — an expired
+      // refresh token, or a sign-out in another tab. `logout()` clears the
+      // cache on its own path; this covers the ones it never sees, so the next
+      // person to sign in on this machine cannot be shown the last one's rows.
+      if (previous && !next) queryClient.clear();
     });
   },
 

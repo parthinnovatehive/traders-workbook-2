@@ -609,18 +609,54 @@ async function fetchProfile(session: Session): Promise<User | null> {
 
   if (created && !createError) return toUser(created as ProfileRow);
 
-  // Last resort: let them into the app rather than bouncing them to login, but
-  // make the cause visible instead of silently degrading forever.
-  console.error('[auth] Could not create the missing profile row.', createError);
-  return {
-    id: session.user.id,
-    email: session.user.email ?? '',
-    displayName: session.user.email?.split('@')[0] ?? 'Trader',
-    role: 'user',
-    baseCurrency: 'USD',
-    startingCapital: 0,
-    createdAt: session.user.created_at ?? new Date().toISOString(),
-  };
+  // Never fabricate an identity to keep someone in the app.
+  //
+  // This used to return a synthetic `User` here, which meant an unauthenticated
+  // visitor with stale tokens in localStorage still got a truthy user — so
+  // `GuestRoute` bounced them straight past the login form without a password,
+  // while every server call 401'd because the JWT was dead. Signed-out is the
+  // honest answer when we cannot establish who this is.
+  console.error(
+    '[auth] Could not read or create the profile row for a verified session. ' +
+      'Check the profiles INSERT/SELECT policies.',
+    createError,
+  );
+  return null;
+}
+
+/**
+ * The stored session, but only if the server still accepts it.
+ *
+ * `getSession()` reads localStorage and returns whatever is there — including a
+ * session whose refresh token has been revoked or has expired. Trusting it is
+ * what produced "clicking Login signs me straight into the old account, but
+ * paying says I'm not signed in": the guard saw a user, the Edge Function
+ * verified the JWT and did not.
+ *
+ * `getUser()` costs one round trip and actually validates the token, so a dead
+ * session reads as signed out. Stale tokens are cleared on the way out, because
+ * leaving them in storage reproduces the same confusion on the next visit.
+ */
+async function verifiedSession(): Promise<Session | null> {
+  const sb = getSupabase();
+
+  const { data: stored } = await sb.auth.getSession();
+  if (!stored.session) return null;
+
+  const { data: verified, error } = await sb.auth.getUser();
+  if (error || !verified.user) {
+    console.warn('[auth] Stored session is no longer valid — clearing it.', error);
+    try {
+      // `local` scope: the token is already dead, so a server-side revoke would
+      // only fail. This just empties our own storage.
+      await sb.auth.signOut({ scope: 'local' });
+    } catch (signOutError) {
+      console.error('[auth] Could not clear the stale session.', signOutError);
+    }
+    return null;
+  }
+
+  return stored.session;
 }
 
 /** The signed-in user's id, or throw — every repository call needs one. */
@@ -753,9 +789,9 @@ function authErrorMessage(error: AuthError, context: 'login' | 'signup'): string
 
 const auth: IAuthService = {
   async getCurrentUser() {
-    const { data } = await getSupabase().auth.getSession();
-    if (!data.session) return null;
-    return fetchProfile(data.session);
+    const session = await verifiedSession();
+    if (!session) return null;
+    return fetchProfile(session);
   },
 
   async login(email, password) {
@@ -824,11 +860,20 @@ const auth: IAuthService = {
   },
 
   onAuthStateChange(handler) {
-    const { data } = getSupabase().auth.onAuthStateChange((_event, session) => {
+    const { data } = getSupabase().auth.onAuthStateChange((event, session) => {
       if (!session) {
         handler(null);
         return;
       }
+
+      // `INITIAL_SESSION` fires the moment we subscribe and carries the session
+      // straight out of localStorage, unverified. `bootstrap` has already done
+      // the verified read by this point, so acting on this event would do
+      // nothing but overwrite a checked answer with an unchecked one — which is
+      // exactly the stale-login bug. Every other event (SIGNED_IN,
+      // TOKEN_REFRESHED, USER_UPDATED) carries a session the server just issued.
+      if (event === 'INITIAL_SESSION') return;
+
       void fetchProfile(session).then(handler);
     });
     return () => data.subscription.unsubscribe();

@@ -9,6 +9,10 @@ import {
   getEntitlements,
   isPaidActive,
   tradeLimit,
+  billingPhase,
+  daysUntilExpiry,
+  hasLapsed,
+  EXPIRING_SOON_DAYS,
 } from '../entitlements';
 
 const plans = DEFAULT_PLANS;
@@ -137,5 +141,102 @@ describe('getEntitlements summary', () => {
     expect(e.tradesRemaining).toBe(-1);
     expect(e.canCreateTrade).toBe(true);
     expect(e.paidActive).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Billing phase — what the membership page tells the user                     */
+/* -------------------------------------------------------------------------- */
+
+const NOW = new Date('2026-06-15T12:00:00.000Z');
+const at = (days: number) => new Date(NOW.getTime() + days * 864e5).toISOString();
+
+const sub = (over: Partial<Subscription>): Subscription => ({
+  id: 's',
+  userId: 'u',
+  planId: 'plan-pro-monthly',
+  status: 'active',
+  ...over,
+});
+
+describe('billingPhase', () => {
+  it('reports a comfortable active plan as active', () => {
+    expect(billingPhase(sub({ currentPeriodEnd: at(30) }), plans, NOW)).toBe('active');
+  });
+
+  it('warns while the plan is still active but close to the end', () => {
+    expect(billingPhase(sub({ currentPeriodEnd: at(3) }), plans, NOW)).toBe('expiring_soon');
+  });
+
+  it('treats the boundary day as expiring, not expired', () => {
+    expect(billingPhase(sub({ currentPeriodEnd: at(EXPIRING_SOON_DAYS) }), plans, NOW)).toBe(
+      'expiring_soon',
+    );
+  });
+
+  /**
+   * The bug this whole phase concept exists for: nothing writes
+   * `status = 'expired'`, so a lapsed row still reads 'active' and the page
+   * showed a green "Active" badge to someone already back on Free limits.
+   */
+  it('reports a lapsed period as expired even though the stored status says active', () => {
+    const lapsed = sub({ status: 'active', currentPeriodEnd: at(-1) });
+    expect(lapsed.status).toBe('active');
+    expect(billingPhase(lapsed, plans, NOW)).toBe('expired');
+    expect(isPaidActive(lapsed, plans, NOW)).toBe(false);
+  });
+
+  it('agrees with isPaidActive on both sides of the boundary', () => {
+    for (const days of [-10, -1, 1, 10]) {
+      const s = sub({ currentPeriodEnd: at(days) });
+      expect(billingPhase(s, plans, NOW) === 'expired').toBe(!isPaidActive(s, plans, NOW));
+    }
+  });
+
+  it('keeps a cancelled-but-unexpired plan distinct from an expired one', () => {
+    expect(billingPhase(sub({ status: 'canceled', currentPeriodEnd: at(5) }), plans, NOW)).toBe(
+      'canceled',
+    );
+    expect(billingPhase(sub({ status: 'canceled', currentPeriodEnd: at(-5) }), plans, NOW)).toBe(
+      'expired',
+    );
+  });
+
+  it('is free for a free plan regardless of dates', () => {
+    expect(billingPhase(sub({ planId: 'plan-free', currentPeriodEnd: at(-5) }), plans, NOW)).toBe(
+      'free',
+    );
+    expect(billingPhase(null, plans, NOW)).toBe('free');
+  });
+
+  it('surfaces a failed payment', () => {
+    expect(billingPhase(sub({ status: 'past_due', currentPeriodEnd: at(5) }), plans, NOW)).toBe(
+      'past_due',
+    );
+  });
+});
+
+describe('daysUntilExpiry', () => {
+  it('counts whole days ahead and goes negative once passed', () => {
+    expect(daysUntilExpiry(sub({ currentPeriodEnd: at(10) }), NOW)).toBe(10);
+    expect(daysUntilExpiry(sub({ currentPeriodEnd: at(-2) }), NOW)).toBe(-2);
+  });
+
+  it('rounds a part-day up, so "ends in 1 day" never reads as 0', () => {
+    expect(daysUntilExpiry(sub({ currentPeriodEnd: at(0.25) }), NOW)).toBe(1);
+  });
+
+  it('is null when the plan has no end date', () => {
+    expect(daysUntilExpiry(sub({}), NOW)).toBeNull();
+    expect(daysUntilExpiry(null, NOW)).toBeNull();
+  });
+});
+
+describe('hasLapsed', () => {
+  it('is false for an open-ended subscription', () => {
+    expect(hasLapsed(sub({}), NOW)).toBe(false);
+  });
+  it('ignores an unparseable date rather than locking the user out', () => {
+    expect(hasLapsed(sub({ currentPeriodEnd: 'not-a-date' }), NOW)).toBe(false);
   });
 });
