@@ -44,8 +44,22 @@ export interface PaymentOrder {
 /** What a gateway hands back to the browser when checkout succeeds. */
 export interface PaymentResult {
   paymentId: string;
-  /** HMAC from the provider. Verified server-side; unused by the mock. */
+  /** The gateway's order id the payment was made against. */
+  providerOrderId?: string;
+  /**
+   * HMAC from the provider, verified server-side. The browser only relays it —
+   * it is never checked here, because a check in the browser proves nothing.
+   */
   signature?: string;
+}
+
+/**
+ * An order plus the publishable key needed to open checkout against it. The
+ * key id is returned by the server so the client never hardcodes which account
+ * it is charging into.
+ */
+export interface CheckoutSession extends PaymentOrder {
+  keyId?: string;
 }
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {

@@ -1,154 +1,147 @@
-# Payments — how checkout works, and how to add Razorpay
+# Payments — Razorpay
 
-The checkout flow is complete and working against a **mock provider**. Nothing
-about its shape is provisional: switching to Razorpay changes three things and
-touches no page, hook or interface.
+Razorpay is integrated. This document is the setup runbook and the record of how
+each bypass is closed.
 
 ---
 
 ## The flow
 
 ```
-  Membership page          server (Postgres)              provider
-  ──────────────────────────────────────────────────────────────────────
-  click "Choose Pro"
-        │
-        └─ createOrder(planId) ──►  create_payment_order()
-                                    reads the price from `plans`
-                                    inserts payment_orders (status=created)
-        ◄───────────────────────────  PaymentOrder
-        │
-  CheckoutModal opens  ─────────────────────────────►  user pays
-        ◄─────────────────────────────────────────────  { paymentId, signature }
-        │
-        └─ confirmPayment(orderId, result) ──►  confirm_payment_order()
-                                                 verifies the signature
-                                                 marks the order paid
-                                                 upserts `subscriptions`
-        ◄──────────────────────────────────────  Subscription (active)
+  browser                     Edge Function                Razorpay        Postgres
+  ─────────────────────────────────────────────────────────────────────────────────
+  "Choose Pro"
+     └─ payments-create-order ──►  verify JWT
+                                   create_payment_order() ─────────────────►  price
+                                                                              from
+                                                                              `plans`
+                                   POST /v1/orders ──────►  order_…
+                                   attach_provider_order() ────────────────►  saved
+     ◄── { order, keyId }
+     │
+  Razorpay Checkout opens ──────────────────────────────►  user pays
+     ◄────────────────────────────────────────────────────  payment_id + signature
+     │
+     └─ payments-verify ────────►  1. verify HMAC
+                                   2. GET /v1/payments/:id  ◄── captured? amount?
+                                   3. confirm_payment_order() ─────────────►  plan
+                                                                              granted
+     ◄── { subscription }
+
+  …and independently, Razorpay ──►  payments-webhook  (payment.captured)
+                                    verifies its own HMAC, settles the same order
 ```
 
-## Two invariants this design exists to protect
-
-**1. The client never sets the price.** `create_payment_order` reads `amount`
-from the `plans` row. The browser sends a plan id and nothing else, so a
-tampered request cannot buy Elite for ₹1.
-
-**2. The client never activates a plan.** `payment_orders` has exactly one RLS
-policy — a `SELECT`. There is no INSERT or UPDATE policy, so PostgREST will not
-let a client mint a paid order. Only the `SECURITY DEFINER` functions write, and
-only `confirm_payment_order` touches `subscriptions`.
-
-If you ever find yourself adding an INSERT or UPDATE policy to `payment_orders`,
-stop: that hands every user a free Elite plan.
-
-A third guard worth knowing about: `payment_orders_provider_payment_key` is a
-unique index on `provider_payment_id`. One payment id can settle one order, so a
-replayed receipt cannot extend a subscription repeatedly.
+The webhook is not a nicety. A user can close the tab mid-redirect and their
+money is still taken — the webhook is what grants the plan anyway.
 
 ---
 
-## What "mock" means today
+## Setup
 
-- `VITE_PAYMENT_PROVIDER` is unset (or anything other than `razorpay`), so
-  orders are created with `provider = 'mock'`.
-- `CheckoutModal` stands in for the gateway's hosted UI. It shows the real
-  server-priced amount, waits ~900ms, and returns a `pay_mock_…` id.
-- `confirm_payment_order` skips signature verification **for mock orders only**.
-  A `razorpay` order with no signature is rejected outright, so the provider
-  cannot be switched on before verification exists.
-- The modal also offers "Simulate a declined payment" so the failure path is
-  exercised rather than discovered by the first real customer whose card fails.
+### 1. Run the migrations
+
+```bash
+# In the Supabase SQL Editor, in order:
+#   supabase/migrations/0007_payment_orders.sql
+#   supabase/migrations/0008_razorpay_hardening.sql
+```
+
+Check the verification queries at the bottom of 0008. **Query (a) must return
+zero rows** — any row there means a payment function is callable from a browser.
+
+### 2. Set the secrets
+
+```bash
+supabase secrets set RAZORPAY_KEY_ID=rzp_live_xxxxxxxxxxxx
+supabase secrets set RAZORPAY_KEY_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+supabase secrets set RAZORPAY_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Three distinct values. The **webhook secret is not the key secret** — you choose
+it when creating the webhook. `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
+`SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
+
+Nothing goes in `.env`. The build refuses to start if a `VITE_RAZORPAY_KEY_SECRET`
+exists — see `vite.config.ts`.
+
+### 3. Deploy the functions
+
+```bash
+supabase functions deploy payments-create-order
+supabase functions deploy payments-verify
+supabase functions deploy payments-fail-order
+supabase functions deploy payments-webhook --no-verify-jwt
+```
+
+`--no-verify-jwt` on the webhook only: Razorpay does not send a Supabase token,
+and the HMAC is what authenticates it. Everything else requires a signed-in user.
+
+### 4. Register the webhook
+
+Razorpay Dashboard → Settings → Webhooks → Add:
+
+- **URL** — `https://<project-ref>.supabase.co/functions/v1/payments-webhook`
+- **Secret** — the same value as `RAZORPAY_WEBHOOK_SECRET`
+- **Events** — `payment.captured`, `payment.failed`
+
+### 5. Test with test keys first
+
+Use `rzp_test_…` keys and Razorpay's test card `4111 1111 1111 1111`, any future
+expiry, any CVV. Verify all of:
+
+- a successful payment grants the plan and appears in Billing history
+- closing the checkout marks the order `failed`, grants nothing
+- a failed card marks the order `failed`, grants nothing
+- the plan still lands if you kill the tab immediately after paying (webhook)
 
 ---
 
-## Adding Razorpay
+## Bypasses, and where each is closed
 
-### 1. An Edge Function to create the order
+| # | Attack | Closed by |
+|---|---|---|
+| 1 | Call `confirm_payment_order` from the console with a made-up payment id | `EXECUTE` revoked from `anon`/`authenticated` (0008 §4). Only the service role can call it, and only Edge Functions hold that. |
+| 2 | Send a cheaper price in the request | The request body is only a plan id. `create_payment_order` reads the amount from `plans`. |
+| 3 | Pay ₹1 against a ₹3,299 order | `payments-verify` re-reads the payment from Razorpay's API and `confirm_payment_order` rejects any amount mismatch. |
+| 4 | Replay one receipt to keep extending a plan | Unique index on `provider_payment_id`, plus a status gate — an order settles once. |
+| 5 | Settle someone else's order | Order ownership checked against the JWT-derived user id, never the body. |
+| 6 | Attach a payment from a different order | `provider_order_id` must match what we issued. |
+| 7 | Replay a webhook | `payment_webhook_events` ledger keyed on Razorpay's event id. |
+| 8 | Forge a webhook | HMAC over the raw body with the webhook secret, compared in constant time. |
+| 9 | Use an authorized-but-not-captured payment | Status must be exactly `captured`. |
+| 10 | `INSERT`/`UPDATE` `payment_orders` via PostgREST | The table has exactly one policy, a `SELECT`. |
+| 11 | Forge the signature by timing the comparison | `timingSafeEqual`, not `===`. |
+| 12 | Read the key secret from the bundle | It is never in `src/`. `vite.config.ts` fails the build if a `VITE_`-prefixed secret exists. |
 
-Razorpay's Orders API needs your **key secret**, which must never reach the
-browser. So order creation moves server-side:
+Two rules, if you change nothing else:
 
-```ts
-// supabase/functions/create-order/index.ts
-const plan = await db.from('plans').select('*').eq('id', planId).single();
+**Never add an INSERT or UPDATE policy to `payment_orders`.** That hands every
+user a free Elite plan.
 
-const rzp = await fetch('https://api.razorpay.com/v1/orders', {
-  method: 'POST',
-  headers: {
-    Authorization: `Basic ${btoa(`${KEY_ID}:${KEY_SECRET}`)}`,
-    'Content-Type': 'application/json',
-  },
-  // Razorpay works in the smallest currency unit — paise, not rupees.
-  body: JSON.stringify({
-    amount: Math.round(plan.price * 100),
-    currency: plan.currency,
-    receipt: orderId,
-  }),
-}).then((r) => r.json());
-```
-
-Store `rzp.id` on the row as `provider_order_id`.
-
-Then in [`src/services/supabase.ts`](../src/services/supabase.ts), `createOrder`
-calls the function instead of the RPC. **Its return type does not change.**
-
-### 2. An Edge Function to verify the signature
-
-This is the part that must not be skipped:
-
-```ts
-const expected = createHmac('sha256', KEY_SECRET)
-  .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-  .digest('hex');
-
-if (expected !== razorpay_signature) return new Response('Invalid signature', { status: 400 });
-```
-
-Only after that passes does it call `confirm_payment_order` with the service
-role. Also register a **webhook** for `payment.captured` pointing at the same
-verification — the browser can close before the handler fires, and the webhook
-is what makes the payment land anyway.
-
-### 3. Replace the modal with Razorpay's checkout
-
-In [`MembershipPanel`](../src/components/billing/MembershipPanel.tsx), swap
-`<CheckoutModal>` for:
-
-```ts
-new Razorpay({
-  key: import.meta.env.VITE_RAZORPAY_KEY_ID,   // publishable id, safe in the bundle
-  order_id: order.providerOrderId,
-  amount: order.amount * 100,
-  currency: order.currency,
-  handler: (r) => onPaid({ paymentId: r.razorpay_payment_id, signature: r.razorpay_signature }),
-  modal: { ondismiss: () => onFailed('Checkout was closed before payment.') },
-}).open();
-```
-
-`onPaid` and `onFailed` already take exactly these shapes. Nothing else moves.
-
-### 4. Flip the switch
-
-Set `VITE_PAYMENT_PROVIDER=razorpay`. New orders are created as `razorpay` and
-`confirm_payment_order` starts demanding a signature.
+**Never grant EXECUTE on the payment functions to `authenticated`.** Same
+outcome. Verification query (a) in 0008 exists to catch exactly this.
 
 ---
 
-## Before taking real money
+## Without Razorpay keys
 
-- [ ] Signature verification lives in an Edge Function, never in the database
-      and never in the browser.
-- [ ] `payment.captured` webhook registered and verified — do not rely on the
-      browser handler alone.
-- [ ] Razorpay amounts are in **paise**; the `plans` table is in rupees. Getting
-      this wrong charges 100× or 1/100×.
-- [ ] Test the failure and abandonment paths, not just the happy one.
-- [ ] Refunds: `payment_orders.status` already has a `refunded` state; nothing
-      writes it yet.
-- [ ] Razorpay onboarding will ask for the Terms, Privacy and Refund pages —
-      they exist at `/terms`, `/privacy`, `/refunds`, but still carry
-      placeholder company details (see `docs/GAPS.md` #21).
-- [ ] Decide what happens when a subscription lapses. `isPaidActive()` already
-      treats a past `current_period_end` as expired and falls back to Free, but
-      nothing currently emails the user or retries a payment.
+If the secrets are unset, `payments-create-order` fails and the upgrade button
+reports it. Local development (`VITE_DATA_SOURCE=local`) uses the in-browser mock
+repository, which keeps its own `mock` provider and the `CheckoutModal` stand-in
+so the flow is testable offline — see `src/services/local.ts`.
+
+---
+
+## Still open
+
+- **Refunds.** `payment_orders.status` has a `refunded` state; nothing writes it.
+  Add a `refund.processed` webhook handler when you need it.
+- **Renewals.** Subscriptions are one-off payments with a period end, not
+  Razorpay Subscriptions. When a period lapses, `isPaidActive()` falls back to
+  Free — correct, but nobody is emailed and nothing retries.
+- **Invoices.** Billing history shows orders, not GST invoices. An Indian
+  business selling to consumers will need proper invoices.
+- **Company details.** Razorpay onboarding checks your Terms, Privacy and Refund
+  pages. They exist at `/terms`, `/privacy`, `/refunds` but still carry
+  placeholder details — see `docs/GAPS.md` #21.

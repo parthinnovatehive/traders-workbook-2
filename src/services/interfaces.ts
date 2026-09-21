@@ -8,6 +8,7 @@ import type {
   FeedbackPatch,
   FeedbackWithAuthor,
   Instrument,
+  CheckoutSession,
   PaymentOrder,
   PaymentResult,
   Plan,
@@ -203,7 +204,7 @@ export interface IBillingRepository {
    * Open an order for a plan. The amount is read from `plans` server-side —
    * the caller never supplies a price.
    */
-  createOrder(userId: string, planId: string): Promise<PaymentOrder>;
+  createOrder(userId: string, planId: string): Promise<CheckoutSession>;
 
   /**
    * Submit the gateway's receipt. The server verifies it and, only if it holds

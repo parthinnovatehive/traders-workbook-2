@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
-import type { PaymentOrder, Plan, SubscriptionStatus } from '@/types';
+import type { CheckoutSession, PaymentResult, Plan, SubscriptionStatus } from '@/types';
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, Modal } from '@/components/ui';
 import {
   useCancelSubscription,
@@ -16,6 +16,8 @@ import { toast } from '@/store/toastStore';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { cn } from '@/utils/cn';
+import { openRazorpayCheckout } from '@/lib/razorpay';
+import { useAuthStore } from '@/store/authStore';
 import { CheckoutModal, PaymentStatusBadge } from './CheckoutModal';
 
 const STATUS_META: Record<SubscriptionStatus, { label: string; tone: 'neutral' | 'profit' | 'loss' | 'warning' | 'primary' }> = {
@@ -28,6 +30,7 @@ const STATUS_META: Record<SubscriptionStatus, { label: string; tone: 'neutral' |
 };
 
 export function MembershipPanel() {
+  const user = useAuthStore((s) => s.user);
   const { entitlements, isLoading } = useEntitlements();
   const subscription = useSubscription();
   const plansQuery = usePlans();
@@ -39,7 +42,7 @@ export function MembershipPanel() {
 
   // The order being paid for. Held here rather than in the modal so the modal
   // stays a dumb presentation of "this order, this plan".
-  const [order, setOrder] = useState<PaymentOrder | null>(null);
+  const [order, setOrder] = useState<CheckoutSession | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<Plan | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
 
@@ -68,23 +71,10 @@ export function MembershipPanel() {
   const unlimited = limit < 0;
   const currentPlanId = subscription.data?.planId;
 
-  /** Step 1: open a server-priced order, then hand it to checkout. */
-  const onSubscribe = (plan: Plan) => {
-    createOrder.mutate(plan.id, {
-      onSuccess: (created) => {
-        setCheckoutPlan(plan);
-        setOrder(created);
-      },
-      onError: (e) =>
-        toast.error(e instanceof Error ? e.message : 'Could not start the checkout.'),
-    });
-  };
-
   /** Step 2: the gateway succeeded — let the server verify and activate. */
-  const onPaid = (result: { paymentId: string; signature?: string }) => {
-    if (!order) return;
+  const onPaid = (activeOrder: CheckoutSession, result: PaymentResult) => {
     confirmPayment.mutate(
-      { orderId: order.id, result },
+      { orderId: activeOrder.id, result },
       {
         onSuccess: ({ subscription: sub }) => {
           const paidPlan = plans.find((p) => p.id === sub.planId);
@@ -93,16 +83,66 @@ export function MembershipPanel() {
           setCheckoutPlan(null);
         },
         onError: (e) =>
-          toast.error(e instanceof Error ? e.message : 'We could not verify that payment.'),
+          toast.error(
+            e instanceof Error
+              ? e.message
+              : 'Payment taken but not yet applied — it will land shortly.',
+          ),
       },
     );
   };
 
   /** Declined or abandoned: close the order so it isn't left pending forever. */
-  const onFailed = (reason: string) => {
-    if (!order) return;
-    failOrder.mutate({ orderId: order.id, reason });
+  const onFailed = (activeOrder: CheckoutSession, reason: string) => {
+    failOrder.mutate({ orderId: activeOrder.id, reason });
+    setOrder(null);
+    setCheckoutPlan(null);
     toast.error(reason);
+  };
+
+  /** Step 1: open a server-priced order, then hand it to the gateway. */
+  const onSubscribe = (plan: Plan) => {
+    // Moving to Free is a cancellation, not a purchase — the server refuses to
+    // open an order for a zero-price plan, so route it where it belongs.
+    if (plan.price <= 0) {
+      setCancelOpen(true);
+      return;
+    }
+
+    createOrder.mutate(plan.id, {
+      onSuccess: async (created) => {
+        setCheckoutPlan(plan);
+        setOrder(created);
+
+        // Mock provider (no Razorpay keys configured): the local modal stands in.
+        if (created.provider !== 'razorpay' || !created.keyId || !created.providerOrderId) {
+          return;
+        }
+
+        try {
+          await openRazorpayCheckout({
+            keyId: created.keyId,
+            providerOrderId: created.providerOrderId,
+            amount: created.amount,
+            currency: created.currency,
+            planName: `${plan.name} · ${plan.billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`,
+            prefill: { name: user?.displayName, email: user?.email, contact: user?.phone },
+            onSuccess: (r) =>
+              onPaid(created, {
+                paymentId: r.razorpay_payment_id,
+                providerOrderId: r.razorpay_order_id,
+                signature: r.razorpay_signature,
+              }),
+            onDismiss: () => onFailed(created, 'Checkout was closed before payment.'),
+            onFailure: (reason) => onFailed(created, reason),
+          });
+        } catch (e) {
+          onFailed(created, e instanceof Error ? e.message : 'Could not open checkout.');
+        }
+      },
+      onError: (e) =>
+        toast.error(e instanceof Error ? e.message : 'Could not start the checkout.'),
+    });
   };
 
   const onCancel = () => {
@@ -161,13 +201,15 @@ export function MembershipPanel() {
 
       <BillingHistory />
 
+      {/* Only used when no Razorpay keys are configured — with them, the hosted
+          checkout takes over and this never opens. */}
       <CheckoutModal
-        open={order !== null}
+        open={order !== null && order.provider !== 'razorpay'}
         order={order}
         plan={checkoutPlan}
         confirming={confirmPayment.isPending}
-        onPaid={onPaid}
-        onFailed={onFailed}
+        onPaid={(result) => order && onPaid(order, result)}
+        onFailed={(reason) => order && onFailed(order, reason)}
         onClose={() => {
           setOrder(null);
           setCheckoutPlan(null);

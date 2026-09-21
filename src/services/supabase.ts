@@ -17,7 +17,6 @@ import type {
   Market,
   MistakeCode,
   PaymentOrder,
-  PaymentProvider,
   PaymentStatus,
   Plan,
   PlanCode,
@@ -393,12 +392,23 @@ function toRisk(r: RiskRow): RiskSetting {
 }
 
 /**
- * Which gateway new orders are opened against. Flipping this to `razorpay`
- * makes `confirm_payment_order` demand a signature, so it cannot be switched on
- * before the verifying Edge Function exists — see docs/PAYMENTS.md.
+ * Edge Functions return `{ error: "..." }` with a non-2xx status, but
+ * supabase-js surfaces only "Edge Function returned a non-2xx status code".
+ * Dig the real message out of the response so the user sees "Amount mismatch"
+ * rather than an HTTP platitude.
  */
-const PAYMENT_PROVIDER: PaymentProvider =
-  import.meta.env.VITE_PAYMENT_PROVIDER === 'razorpay' ? 'razorpay' : 'mock';
+async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const context = (error as { context?: Response })?.context;
+  if (context && typeof context.json === 'function') {
+    try {
+      const body = (await context.json()) as { error?: string };
+      if (body?.error) return body.error;
+    } catch {
+      // non-JSON body — fall through
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 function toPaymentOrder(r: PaymentOrderRow): PaymentOrder {
   return {
@@ -1392,26 +1402,45 @@ const billing: IBillingRepository = {
    * reach the browser) and returns the same shape plus `providerOrderId`.
    */
   async createOrder(_userId, planId) {
-    const { data, error } = await getSupabase().rpc('create_payment_order', {
-      p_plan_id: planId,
-      p_provider: PAYMENT_PROVIDER,
-    });
-    if (error) throw new Error(error.message);
-    return toPaymentOrder(data as PaymentOrderRow);
+    // An Edge Function, not an RPC: creating the Razorpay order needs the key
+    // secret, and the SQL functions are revoked from `authenticated` precisely
+    // so that no browser can reach them.
+    const { data, error } = await getSupabase().functions.invoke<{
+      order: PaymentOrderRow;
+      keyId: string;
+    }>('payments-create-order', { body: { planId } });
+
+    if (error) throw new Error(await edgeErrorMessage(error, 'Could not start the checkout.'));
+    if (!data?.order) throw new Error('Could not start the checkout.');
+
+    return { ...toPaymentOrder(data.order), keyId: data.keyId };
   },
 
   /**
    * Submits the gateway receipt. `confirm_payment_order` verifies it and is the
    * only thing in the system allowed to write an active subscription.
    */
+  /**
+   * Hands the receipt to `payments-verify`, which checks the HMAC, re-reads the
+   * payment from Razorpay to confirm it was actually captured for the right
+   * amount, and only then activates the plan. Nothing here can grant anything.
+   */
   async confirmPayment(_userId, orderId, result) {
     const sb = getSupabase();
-    const { data, error } = await sb.rpc('confirm_payment_order', {
-      p_order_id: orderId,
-      p_provider_payment_id: result.paymentId,
-      p_signature: result.signature ?? null,
-    });
-    if (error) throw new Error(error.message);
+    const { data, error } = await sb.functions.invoke<{ subscription: SubscriptionRow }>(
+      'payments-verify',
+      {
+        body: {
+          orderId,
+          razorpayOrderId: result.providerOrderId,
+          razorpayPaymentId: result.paymentId,
+          razorpaySignature: result.signature,
+        },
+      },
+    );
+
+    if (error) throw new Error(await edgeErrorMessage(error, 'We could not verify that payment.'));
+    if (!data?.subscription) throw new Error('We could not verify that payment.');
 
     // Re-read the order so the caller sees the settled row (paid_at, payment id)
     // rather than the pre-payment one it was holding.
@@ -1423,17 +1452,26 @@ const billing: IBillingRepository = {
 
     return {
       order: toPaymentOrder(orderRow as PaymentOrderRow),
-      subscription: toSubscription(data as SubscriptionRow),
+      subscription: toSubscription(data.subscription),
     };
   },
 
   async failOrder(_userId, orderId, reason) {
-    const { data, error } = await getSupabase().rpc('fail_payment_order', {
-      p_order_id: orderId,
-      p_reason: reason,
+    const sb = getSupabase();
+    const { error } = await sb.functions.invoke('payments-fail-order', {
+      body: { orderId, reason },
     });
-    if (error) throw new Error(error.message);
-    return toPaymentOrder(data as PaymentOrderRow);
+    // Best-effort bookkeeping: a pending row that never closes is untidy, but
+    // it grants nothing, so a failure here must not mask the payment error the
+    // user actually needs to see.
+    if (error) console.warn('[payments] could not close the abandoned order', error);
+
+    const { data: orderRow } = await sb
+      .from('payment_orders')
+      .select('*')
+      .eq('id', orderId)
+      .single();
+    return toPaymentOrder(orderRow as PaymentOrderRow);
   },
 
   async orders(userId: string) {

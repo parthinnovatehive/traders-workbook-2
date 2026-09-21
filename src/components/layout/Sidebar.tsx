@@ -56,7 +56,7 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
         Log out
       </button>
       <p className="px-3 pt-2 text-[11px] text-muted">
-        {APP_VERSION}
+        {/* {APP_VERSION} */}
         {/* Only true against the in-browser mock — never label a real user's
             own trades as demo data. */}
         {isLocalDataSource && ' · Demo data'}
