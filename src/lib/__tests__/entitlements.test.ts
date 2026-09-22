@@ -93,11 +93,6 @@ describe('feature gating', () => {
     expect(canAccessFeature('halls', eliteActive, plans)).toBe(true);
   });
 
-  it('grants ai_insights to nobody — the feature does not exist yet', () => {
-    for (const sub of [free, proActive, eliteActive]) {
-      expect(canAccessFeature('ai_insights', sub, plans)).toBe(false);
-    }
-  });
 
   it('advertises nothing that is not enforced', () => {
     // Every plan's marketing bullet list must correspond to capability that is

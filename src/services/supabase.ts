@@ -149,6 +149,7 @@ interface PlanRow {
   limits: Record<string, number | boolean>;
   is_active: boolean;
   sort_order: number;
+  discount_percent: number | null;
 }
 
 interface TradeRow {
@@ -336,6 +337,8 @@ function toPlan(r: PlanRow): Plan {
     limits: r.limits ?? {},
     isActive: r.is_active,
     sortOrder: r.sort_order,
+    // Null until migration 0010 has run on this project.
+    discountPercent: Number(r.discount_percent ?? 0),
   };
 }
 
@@ -1224,6 +1227,7 @@ const plans: IPlanRepository = {
     if (patch.limits !== undefined) row.limits = patch.limits;
     if (patch.isActive !== undefined) row.is_active = patch.isActive;
     if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
+    if (patch.discountPercent !== undefined) row.discount_percent = patch.discountPercent;
     const { data, error } = await getSupabase()
       .from('plans')
       .update(row)
@@ -1233,7 +1237,59 @@ const plans: IPlanRepository = {
     const updated = unwrap(data, error, 'Failed to update plan');
     return toPlan(updated as PlanRow);
   },
+
+  async create(draft) {
+    // `plans.id` is a text primary key, not a uuid — the readable ids
+    // ('plan-pro-monthly') are worth keeping, so derive rather than generate.
+    const id = draft.id?.trim() || `plan-${draft.code.toLowerCase()}-${draft.billingPeriod}`;
+
+    const { data, error } = await getSupabase()
+      .from('plans')
+      .insert({
+        id,
+        code: draft.code,
+        name: draft.name,
+        price: draft.price,
+        billing_period: draft.billingPeriod,
+        currency: draft.currency,
+        features: draft.features,
+        limits: draft.limits,
+        is_active: draft.isActive,
+        sort_order: draft.sortOrder,
+        discount_percent: draft.discountPercent,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(planWriteMessage(error, id));
+    return toPlan(data as PlanRow);
+  },
+
+  async remove(id) {
+    const { error } = await getSupabase().from('plans').delete().eq('id', id);
+    if (error) throw new Error(planWriteMessage(error, id));
+  },
 };
+
+/**
+ * Turn a Postgres error into something an admin can act on.
+ *
+ * The guards in migration 0009 raise P0001 with a message written for a human,
+ * so pass those straight through. The rest are conditions the UI should have
+ * prevented; name them plainly instead of leaking a constraint name.
+ */
+function planWriteMessage(error: { code?: string; message?: string }, id: string): string {
+  if (error.code === 'P0001' && error.message) return error.message;
+  if (error.code === '23505') return `A plan with the id "${id}" already exists.`;
+  if (error.code === '23514') {
+    return 'Plan code must be uppercase letters, digits or underscores (2–24 characters).';
+  }
+  if (error.code === '23503') return 'Subscribers are still on this plan. Hide it instead.';
+  if (error.code === '42501') {
+    return 'Not permitted. Admin plan management needs migration 0009 — see supabase/migrations.';
+  }
+  return error.message || 'Could not save the plan.';
+}
 
 const admin: IAdminRepository = {
   async overview() {

@@ -1,4 +1,4 @@
-import type { Plan } from '@/types';
+import type { Feature, Plan } from '@/types';
 
 /**
  * Centralized pricing + entitlements config — the single source of truth for
@@ -18,7 +18,6 @@ const PRO_LIMITS = {
   strategy_analytics: true,
   psychology_analytics: true,
   halls: false,
-  ai_insights: false,
 } as const;
 
 const ELITE_LIMITS = { ...PRO_LIMITS, halls: true } as const;
@@ -33,9 +32,8 @@ const PRO_FEATURES = [
 ];
 
 // Every line here maps to a flag in PRO_LIMITS/ELITE_LIMITS that something
-// actually checks. `ai_insights` stays out of this list until the AI review
-// layer exists — selling it while `grep ai_insights src/` finds no
-// implementation is how a plan page becomes a false claim.
+// actually checks. Copy that promises a capability no code enforces is how a
+// plan page becomes a false claim.
 const ELITE_FEATURES = [
   'Everything in Pro',
   'Hall of Fame & Hall of Shame',
@@ -66,10 +64,10 @@ export const DEFAULT_PLANS: Plan[] = [
       strategy_analytics: false,
       psychology_analytics: false,
       halls: false,
-      ai_insights: false,
     },
     isActive: true,
     sortOrder: 0,
+    discountPercent: 0,
   },
   {
     id: 'plan-pro-monthly',
@@ -82,6 +80,7 @@ export const DEFAULT_PLANS: Plan[] = [
     limits: { ...PRO_LIMITS },
     isActive: true,
     sortOrder: 1,
+    discountPercent: 0,
   },
   {
     id: 'plan-elite-monthly',
@@ -94,33 +93,132 @@ export const DEFAULT_PLANS: Plan[] = [
     limits: { ...ELITE_LIMITS },
     isActive: true,
     sortOrder: 2,
+    discountPercent: 0,
   },
+  // Longer commitments are priced from the monthly figure above by
+  // `priceFromMonthly`, so `price` and `discountPercent` always agree. Editing
+  // a monthly price without recalculating these is what `isPriceStale` catches.
   {
-    id: 'plan-pro-yearly',
+    id: 'plan-pro-quarterly',
     code: 'PRO',
     name: 'Pro',
-    price: 15499, // ~20% off 12× monthly
-    billingPeriod: 'yearly',
+    price: 4317, // 1599 × 3 − 10%
+    billingPeriod: 'quarterly',
     currency: 'INR',
     features: PRO_FEATURES,
     limits: { ...PRO_LIMITS },
     isActive: true,
     sortOrder: 3,
+    discountPercent: 10,
   },
   {
-    id: 'plan-elite-yearly',
+    id: 'plan-elite-quarterly',
     code: 'ELITE',
     name: 'Elite',
-    price: 31999, // ~20% off 12× monthly
-    billingPeriod: 'yearly',
+    price: 8907, // 3299 × 3 − 10%
+    billingPeriod: 'quarterly',
     currency: 'INR',
     features: ELITE_FEATURES,
     limits: { ...ELITE_LIMITS },
     isActive: true,
     sortOrder: 4,
+    discountPercent: 10,
+  },
+  {
+    id: 'plan-pro-yearly',
+    code: 'PRO',
+    name: 'Pro',
+    price: 15350, // 1599 × 12 − 20%
+    billingPeriod: 'yearly',
+    currency: 'INR',
+    features: PRO_FEATURES,
+    limits: { ...PRO_LIMITS },
+    isActive: true,
+    sortOrder: 5,
+    discountPercent: 20,
+  },
+  {
+    id: 'plan-elite-yearly',
+    code: 'ELITE',
+    name: 'Elite',
+    price: 31670, // 3299 × 12 − 20%
+    billingPeriod: 'yearly',
+    currency: 'INR',
+    features: ELITE_FEATURES,
+    limits: { ...ELITE_LIMITS },
+    isActive: true,
+    sortOrder: 6,
+    discountPercent: 20,
   },
 ];
 
 /** The free-tier trade limit lives in the free plan's config (admin-editable). */
 export const FREE_TRADE_LIMIT =
   (DEFAULT_PLANS.find((p) => p.code === 'FREE')?.limits.maxTrades as number | undefined) ?? 30;
+
+/* -------------------------------------------------------------------------- */
+/* Admin-facing metadata                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface FeatureMeta {
+  label: string;
+  description: string;
+  /**
+   * Where the flag is actually checked, or null if nothing checks it.
+   *
+   * This is not documentation for its own sake. The rule in `types/plan.ts` is
+   * that a flag must be enforced somewhere or stay out of the marketing copy —
+   * so the admin page disables any flag with no call site rather than letting
+   * someone switch on a feature that does nothing and then sell it.
+   */
+  enforcedIn: string | null;
+}
+
+export const FEATURE_META: Record<Feature, FeatureMeta> = {
+  trade_entry: {
+    label: 'Trade entry',
+    description: 'Recording trades. Limited by the trade count, not by this flag.',
+    enforcedIn: 'always on',
+  },
+  advanced_analytics: {
+    label: 'Advanced analytics',
+    description: 'The full Analytics page — equity curve, R-distribution, drawdown.',
+    enforcedIn: 'pages/Analytics.tsx',
+  },
+  advanced_risk: {
+    label: 'Advanced risk tools',
+    description: 'Risk Management: position sizing, drawdown limits, exposure.',
+    enforcedIn: 'pages/RiskManagement.tsx',
+  },
+  reports: {
+    label: 'Reports',
+    description: 'Generated performance reports.',
+    enforcedIn: 'pages/Reports.tsx',
+  },
+  export: {
+    label: 'CSV export',
+    description: 'Exporting the journal from Settings.',
+    enforcedIn: 'pages/Settings.tsx',
+  },
+  strategy_analytics: {
+    label: 'Strategy analytics',
+    description: 'Per-strategy performance breakdowns.',
+    enforcedIn: 'pages/Strategies.tsx',
+  },
+  psychology_analytics: {
+    label: 'Psychology analytics',
+    description: 'Emotion and discipline tracking.',
+    enforcedIn: 'pages/Psychology.tsx',
+  },
+  halls: {
+    label: 'Hall of Fame & Shame',
+    description: 'Best and worst trade leaderboards.',
+    enforcedIn: 'pages/HallOfFame.tsx, pages/HallOfShame.tsx',
+  },
+};
+
+/** Numeric allowances, edited as plain number inputs. */
+export const PLAN_LIMIT_FIELDS = [
+  { key: 'maxTrades', label: 'Trade entries', hint: '-1 = unlimited' },
+  { key: 'customStrategies', label: 'Custom strategies', hint: '-1 = unlimited' },
+] as const;

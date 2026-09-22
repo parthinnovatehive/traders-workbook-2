@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Plan } from '@/types';
+import type { Plan, PlanDraft } from '@/types';
 import { api } from '@/services';
 
 export function usePlans() {
@@ -11,6 +11,22 @@ export function useUpdatePlan() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Omit<Plan, 'id' | 'code'>> }) =>
       api.plans.update(id, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+  });
+}
+
+export function useCreatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (draft: PlanDraft) => api.plans.create(draft),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+  });
+}
+
+export function useDeletePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.plans.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'] }),
   });
 }

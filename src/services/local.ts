@@ -522,6 +522,39 @@ const plans: IPlanRepository = {
     commit();
     return clone(plan as Plan);
   },
+
+  async create(draft) {
+    const data = db();
+    const id = draft.id?.trim() || `plan-${draft.code.toLowerCase()}-${draft.billingPeriod}`;
+    if (data.plans.some((p) => p.id === id)) {
+      throw new Error(`A plan with the id "${id}" already exists.`);
+    }
+    const plan: Plan = { ...draft, id };
+    data.plans.push(plan);
+    commit();
+    return clone(plan);
+  },
+
+  async remove(id) {
+    const data = db();
+    const plan = data.plans.find((p) => p.id === id);
+    if (!plan) throw new Error('Plan not found.');
+
+    // Mirrors the guards in migration 0009, so the mock refuses the same things
+    // the real database refuses rather than silently allowing more.
+    const subs = data.subscriptions.filter((s) => s.planId === id).length;
+    if (subs > 0) {
+      throw new Error(
+        `Cannot delete "${plan.name}" — ${subs} subscriber${subs === 1 ? '' : 's'} on this plan. Hide it instead.`,
+      );
+    }
+    if (plan.code === 'FREE' && data.plans.filter((p) => p.code === 'FREE').length === 1) {
+      throw new Error('Cannot delete the last FREE plan — new signups are placed on it.');
+    }
+
+    data.plans = data.plans.filter((p) => p.id !== id);
+    commit();
+  },
 };
 
 const admin: IAdminRepository = {

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { PERIOD_SUFFIX } from '@/lib/pricing';
 import { Check } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { Badge, Button, LoadingState } from '@/components/ui';
@@ -40,7 +41,7 @@ export default function Pricing() {
                     <span className="text-4xl font-bold tracking-tight text-text">
                       {plan.price === 0 ? 'Free' : formatCurrency(plan.price, plan.currency, { dp: 0 })}
                     </span>
-                    {plan.price > 0 && <span className="mb-1 text-sm text-muted">/ {plan.billingPeriod === 'monthly' ? 'mo' : 'yr'}</span>}
+                    {plan.price > 0 && <span className="mb-1 text-sm text-muted">/ {PERIOD_SUFFIX[plan.billingPeriod]}</span>}
                   </div>
 
                   <ul className="mt-6 flex-1 space-y-2.5">

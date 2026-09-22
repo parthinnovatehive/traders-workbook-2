@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, Clock, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { BillingPeriod, CheckoutSession, PaymentResult, Plan } from '@/types';
+import { BILLING_PERIODS } from '@/types';
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, Modal } from '@/components/ui';
 import {
   useCancelSubscription,
@@ -13,6 +14,14 @@ import {
 } from '@/hooks/useBilling';
 import { usePlans } from '@/hooks/usePlans';
 import { billingPhase, daysUntilExpiry, type BillingPhase } from '@/lib/entitlements';
+import {
+  PERIOD_ADVERB,
+  PERIOD_LABEL,
+  PERIOD_SUFFIX,
+  monthlyEquivalent,
+  monthlyPlanFor,
+  savingsVsMonthly,
+} from '@/lib/pricing';
 import { toast } from '@/store/toastStore';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
@@ -52,27 +61,40 @@ export function MembershipPanel() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [period, setPeriod] = useState<BillingPeriod>('monthly');
 
-  const plans = plansQuery.data ?? [];
-  const active = plans.filter((p) => p.isActive);
-  const monthly = active.filter((p) => p.billingPeriod === 'monthly');
-  const yearly = active.filter((p) => p.billingPeriod === 'yearly');
+  // `?? []` allocates a new array on every render, so memoise here rather than
+  // downstream — otherwise every memo keyed on `plans` recomputes regardless.
+  const plans = useMemo(() => plansQuery.data ?? [], [plansQuery.data]);
+  const active = useMemo(() => plans.filter((p) => p.isActive), [plans]);
 
-  const yearlySavings = useMemo(() => {
+  /** Which periods actually have plans — an unused period is not offered. */
+  const offeredPeriods = useMemo(
+    () => BILLING_PERIODS.filter((p) => active.some((plan) => plan.billingPeriod === p)),
+    [active],
+  );
+
+  /** The discount each plan represents against its own tier's monthly price. */
+  const savings = useMemo(() => {
     const map = new Map<string, number>();
-    for (const y of yearly) {
-      const m = monthly.find((mm) => mm.code === y.code);
-      if (m && m.price > 0) {
-        const pct = ((m.price * 12 - y.price) / (m.price * 12)) * 100;
-        if (pct > 0) map.set(y.id, Math.round(pct));
+    for (const plan of active) {
+      if (plan.billingPeriod === 'monthly') continue;
+      const base = monthlyPlanFor(plan.code, active);
+      if (base && base.price > 0 && plan.discountPercent > 0) {
+        map.set(plan.id, Math.round(plan.discountPercent));
       }
     }
     return map;
-  }, [monthly, yearly]);
+  }, [active]);
 
-  const topSaving = useMemo(
-    () => (yearlySavings.size > 0 ? Math.max(...yearlySavings.values()) : 0),
-    [yearlySavings],
-  );
+  /** Best discount available in each period, for the toggle's badge. */
+  const periodSaving = useMemo(() => {
+    const map = new Map<BillingPeriod, number>();
+    for (const plan of active) {
+      const pct = savings.get(plan.id);
+      if (pct === undefined) continue;
+      map.set(plan.billingPeriod, Math.max(map.get(plan.billingPeriod) ?? 0, pct));
+    }
+    return map;
+  }, [active, savings]);
 
   if (isLoading) return <LoadingState />;
 
@@ -146,7 +168,7 @@ export function MembershipPanel() {
             providerOrderId: created.providerOrderId,
             amount: created.amount,
             currency: created.currency,
-            planName: `${plan.name} · ${plan.billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`,
+            planName: `${plan.name} · ${PERIOD_LABEL[plan.billingPeriod]}`,
             prefill: { name: user?.displayName, email: user?.email, contact: user?.phone },
             onSuccess: (r) =>
               onPaid(created, {
@@ -183,7 +205,7 @@ export function MembershipPanel() {
     onSubscribe(target);
   };
 
-  const shownPlans = period === 'yearly' ? yearly : monthly;
+  const shownPlans = active.filter((p) => p.billingPeriod === period);
 
   return (
     <div className="space-y-6">
@@ -206,7 +228,7 @@ export function MembershipPanel() {
             {livePlan && livePlan.price > 0 && (
               <span className="text-sm text-muted">
                 {formatCurrency(livePlan.price, livePlan.currency, { dp: 0 })} /{' '}
-                {livePlan.billingPeriod === 'monthly' ? 'mo' : 'yr'}
+                {PERIOD_SUFFIX[livePlan.billingPeriod]}
               </span>
             )}
             {lapsedPlan && (
@@ -297,18 +319,24 @@ export function MembershipPanel() {
           <h3 className="text-sm font-semibold text-text">
             {entitlements.paidActive ? 'Change your plan' : 'Choose a plan'}
           </h3>
-          {monthly.length > 0 && yearly.length > 0 && (
-            <PeriodToggle value={period} onChange={setPeriod} saving={topSaving} />
+          {offeredPeriods.length > 1 && (
+            <PeriodToggle
+              value={period}
+              periods={offeredPeriods}
+              onChange={setPeriod}
+              saving={periodSaving}
+            />
           )}
         </div>
 
         <PlanGrid
           plans={shownPlans}
+          allPlans={active}
           livePlanId={livePlan?.id}
           lapsedPlanId={lapsedPlan?.id}
           onSubscribe={onSubscribe}
           pending={createOrder.isPending}
-          savings={yearlySavings}
+          savings={savings}
         />
       </div>
 
@@ -445,40 +473,46 @@ function PlanAlert({
 
 function PeriodToggle({
   value,
+  periods,
   onChange,
   saving,
 }: {
   value: BillingPeriod;
+  periods: readonly BillingPeriod[];
   onChange: (p: BillingPeriod) => void;
-  saving: number;
+  saving: Map<BillingPeriod, number>;
 }) {
   return (
     <div className="inline-flex items-center rounded-lg border border-border bg-surface-2 p-0.5">
-      {(['monthly', 'yearly'] as const).map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onChange(p)}
-          aria-pressed={value === p}
-          className={cn(
-            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-            value === p ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text',
-          )}
-        >
-          {p === 'monthly' ? 'Monthly' : 'Yearly'}
-          {p === 'yearly' && saving > 0 && (
-            <span className="rounded bg-profit/15 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
-              Save {saving}%
-            </span>
-          )}
-        </button>
-      ))}
+      {periods.map((p) => {
+        const pct = saving.get(p) ?? 0;
+        return (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onChange(p)}
+            aria-pressed={value === p}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+              value === p ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text',
+            )}
+          >
+            {PERIOD_LABEL[p]}
+            {pct > 0 && (
+              <span className="rounded bg-profit/15 px-1.5 py-0.5 text-[10px] font-semibold text-profit">
+                −{pct}%
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function PlanGrid({
   plans,
+  allPlans,
   livePlanId,
   lapsedPlanId,
   onSubscribe,
@@ -486,6 +520,7 @@ function PlanGrid({
   savings,
 }: {
   plans: Plan[];
+  allPlans: readonly Plan[];
   livePlanId?: string;
   lapsedPlanId?: string;
   onSubscribe: (p: Plan) => void;
@@ -533,10 +568,34 @@ function PlanGrid({
               </span>
               {plan.price > 0 && (
                 <span className="mb-1 text-xs text-muted">
-                  / {plan.billingPeriod === 'monthly' ? 'mo' : 'yr'}
+                  / {PERIOD_SUFFIX[plan.billingPeriod]}
                 </span>
               )}
             </div>
+
+            {/* On a committed period the per-month figure is what people
+                actually compare against the monthly plan. Showing only the
+                lump sum makes a discount look like a price rise. */}
+            {plan.price > 0 && plan.billingPeriod !== 'monthly' && (
+              <p className="mt-1 text-xs text-muted">
+                {formatCurrency(monthlyEquivalent(plan.price, plan.billingPeriod), plan.currency, {
+                  dp: 0,
+                })}
+                /mo · {PERIOD_ADVERB[plan.billingPeriod]}
+                {(() => {
+                  const base = monthlyPlanFor(plan.code, allPlans);
+                  if (!base || base.price <= 0) return null;
+                  const saved = savingsVsMonthly(base.price, plan.price, plan.billingPeriod);
+                  if (saved <= 0) return null;
+                  return (
+                    <span className="text-profit">
+                      {' '}
+                      · save {formatCurrency(saved, plan.currency, { dp: 0 })}
+                    </span>
+                  );
+                })()}
+              </p>
+            )}
 
             <ul className="mt-4 flex-1 space-y-2 text-sm">
               {plan.features.map((f) => (

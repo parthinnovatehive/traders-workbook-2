@@ -12,6 +12,7 @@ import type {
   PaymentOrder,
   PaymentResult,
   Plan,
+  PlanDraft,
   RiskSetting,
   RiskSettingPatch,
   SignupPoint,
@@ -124,6 +125,13 @@ export interface IContentRepository {
 export interface IPlanRepository {
   list(): Promise<Plan[]>;
   update(id: string, patch: Partial<Omit<Plan, 'id' | 'code'>>): Promise<Plan>;
+  create(draft: PlanDraft): Promise<Plan>;
+  /**
+   * Hard delete. Refused by the DB when subscribers are on the plan, or when it
+   * is the last FREE plan (migration 0009) — hiding is the safe operation, and
+   * the admin UI offers that first.
+   */
+  remove(id: string): Promise<void>;
 }
 
 /** Both of a user's funded accounts (Forex + Indian). */

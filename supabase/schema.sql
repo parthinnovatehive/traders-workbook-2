@@ -53,12 +53,16 @@ create table if not exists public.plans (
   code           text not null check (code in ('FREE', 'PRO', 'ELITE')),
   name           text not null,
   price          numeric not null default 0 check (price >= 0),
-  billing_period text not null check (billing_period in ('monthly', 'yearly')),
+  billing_period text not null check (billing_period in ('monthly', 'quarterly', 'yearly')),
   currency       text not null default 'INR',
   features       jsonb not null default '[]'::jsonb,
   limits         jsonb not null default '{}'::jsonb,
   is_active      boolean not null default true,
-  sort_order     integer not null default 0
+  sort_order     integer not null default 0,
+  -- Discount vs paying monthly for the same span. Display/intent only —
+  -- `price` is what create_payment_order charges.
+  discount_percent numeric not null default 0
+                 check (discount_percent >= 0 and discount_percent < 100)
 );
 
 -- 1d. trades  (the journal)
@@ -420,7 +424,7 @@ values
     'monthly',
     'INR',
     '["Up to 30 trades", "Journal, calendar & core metrics", "Dashboard", "1 custom strategy"]'::jsonb,
-    '{"maxTrades": 30, "customStrategies": 1, "advanced_analytics": false, "advanced_risk": false, "reports": false, "export": false, "strategy_analytics": false, "psychology_analytics": false, "halls": false, "ai_insights": false}'::jsonb,
+    '{"maxTrades": 30, "customStrategies": 1, "advanced_analytics": false, "advanced_risk": false, "reports": false, "export": false, "strategy_analytics": false, "psychology_analytics": false, "halls": false}'::jsonb,
     true,
     0
   ),
@@ -432,7 +436,7 @@ values
     'monthly',
     'INR',
     '["Unlimited trades", "Full analytics suite", "Advanced risk tools", "Strategy & psychology analytics", "Reports + CSV export", "Unlimited custom strategies"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false}'::jsonb,
     true,
     1
   ),
@@ -444,7 +448,7 @@ values
     'monthly',
     'INR',
     '["Everything in Pro", "Hall of Fame & Hall of Shame", "Priority support"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true}'::jsonb,
     true,
     2
   ),
@@ -456,7 +460,7 @@ values
     'yearly',
     'INR',
     '["Unlimited trades", "Full analytics suite", "Advanced risk tools", "Strategy & psychology analytics", "Reports + CSV export", "Unlimited custom strategies"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": false}'::jsonb,
     true,
     3
   ),
@@ -468,7 +472,7 @@ values
     'yearly',
     'INR',
     '["Everything in Pro", "Hall of Fame & Hall of Shame", "Priority support"]'::jsonb,
-    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true, "ai_insights": false}'::jsonb,
+    '{"maxTrades": -1, "customStrategies": -1, "advanced_analytics": true, "advanced_risk": true, "reports": true, "export": true, "strategy_analytics": true, "psychology_analytics": true, "halls": true}'::jsonb,
     true,
     4
   )

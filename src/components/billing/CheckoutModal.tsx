@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CreditCard, Lock, ShieldCheck, TriangleAlert } from 'lucide-react';
 import type { PaymentOrder, PaymentResult, Plan } from '@/types';
 import { Badge, Button, Modal } from '@/components/ui';
+import { PERIOD_ADVERB, PERIOD_LABEL, periodMonths } from '@/lib/pricing';
 import { formatCurrency } from '@/utils/format';
 import { uid } from '@/utils/id';
 
@@ -73,7 +74,7 @@ export function CheckoutModal({
       open={open}
       onClose={close}
       title="Complete your payment"
-      description={`${plan.name} · ${plan.billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`}
+      description={`${plan.name} · ${PERIOD_LABEL[plan.billingPeriod]}`}
       size="md"
     >
       <div className="space-y-5">
@@ -95,10 +96,10 @@ export function CheckoutModal({
             </span>
           </div>
           <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs text-muted">
-            <Row label="Billing" value={plan.billingPeriod === 'yearly' ? 'Once a year' : 'Monthly'} />
+            <Row label="Billing" value={PERIOD_ADVERB[plan.billingPeriod].replace('billed ', '')} />
             <Row
               label="Renews"
-              value={plan.billingPeriod === 'yearly' ? 'In 12 months' : 'In 1 month'}
+              value={`In ${periodMonths(plan.billingPeriod)} month${periodMonths(plan.billingPeriod) === 1 ? '' : 's'}`}
             />
             <Row label="Order" value={order.id.slice(0, 8)} mono />
           </div>
