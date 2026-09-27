@@ -1,6 +1,24 @@
+import { ROUTES } from '@/constants/routes';
+import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
+
+const PAGE = {
+  path: ROUTES.about,
+  name: 'About',
+  description:
+    'Why we rebuilt an Excel trading journal into a real performance platform, and why every metric comes from one tested engine or is shown as N/A.',
+};
+
 export default function About() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6">
+      <Seo
+        path={PAGE.path}
+        schema={[
+          webPageSchema({ name: PAGE.name, description: PAGE.description, path: PAGE.path }),
+          breadcrumbSchema([...MARKETING_TRAIL, { name: PAGE.name, path: PAGE.path }]),
+        ]}
+      />
+
       <h1 className="text-3xl font-bold tracking-tight text-text sm:text-4xl">From spreadsheet to system</h1>
       <div className="mt-6 space-y-5 text-muted">
         <p>

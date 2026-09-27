@@ -3,15 +3,38 @@ import { PERIOD_SUFFIX } from '@/lib/pricing';
 import { Check } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { Badge, Button, LoadingState } from '@/components/ui';
+import { Seo, breadcrumbSchema, softwareApplicationSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
 import { usePlans } from '@/hooks/usePlans';
 import { formatCurrency } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
+const PAGE = {
+  path: ROUTES.pricing,
+  name: 'Pricing',
+  description:
+    'Start free with 30 trades. Pro and Elite add unlimited trades, advanced analytics, risk tools and the Hall of Fame. See exactly what each plan includes.',
+};
+
 export default function Pricing() {
   const plans = usePlans();
+  // The `offers` in the SoftwareApplication schema are built from the same rows
+  // this page renders, so an admin price change is reflected in the markup
+  // without a redeploy instead of quietly going stale.
+  const activePlans = (plans.data ?? []).filter((plan) => plan.isActive);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+      <Seo
+        path={PAGE.path}
+        schema={[
+          webPageSchema({ name: PAGE.name, description: PAGE.description, path: PAGE.path }),
+          breadcrumbSchema([...MARKETING_TRAIL, { name: PAGE.name, path: PAGE.path }]),
+          // `null` until the plans query resolves, so no empty `offers` array is
+          // published in the meantime.
+          activePlans.length > 0 ? softwareApplicationSchema(activePlans) : null,
+        ]}
+      />
+
       <div className="mx-auto max-w-2xl text-center">
         <h1 className="text-3xl font-bold tracking-tight text-text sm:text-4xl">Simple, honest pricing</h1>
         <p className="mt-4 text-muted">Start free. Upgrade when your trading demands more.</p>
@@ -34,7 +57,7 @@ export default function Pricing() {
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-text">{plan.name}</h3>
+                    <h2 className="text-lg font-semibold text-text">{plan.name}</h2>
                     {featured && <Badge tone="primary">Most popular</Badge>}
                   </div>
                   <div className="mt-4 flex items-end gap-1">

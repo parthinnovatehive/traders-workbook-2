@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { Button } from '@/components/ui';
+import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
 
 const FEATURES = [
   { icon: BookOpen, title: 'Powerful Trade Journal', text: 'Capture every detail — prices, size, stops, targets, setups, psychology and mistakes — with calculated values that are always read-only and accurate.' },
@@ -25,9 +26,25 @@ const FEATURES = [
   { icon: FileText, title: 'Reports & Export', text: 'Daily to yearly reports with CSV/Excel export and print-to-PDF for your records and reviews.' },
 ];
 
+/** Kept beside the copy it describes so the two cannot drift apart. */
+const PAGE = {
+  path: ROUTES.features,
+  name: 'Features',
+  description:
+    'Trade journal, calculation engine, analytics, risk tools, strategy and psychology breakdowns, reports and CSV export in one trading performance platform.',
+};
+
 export default function Features() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+      <Seo
+        path={PAGE.path}
+        schema={[
+          webPageSchema({ name: PAGE.name, description: PAGE.description, path: PAGE.path }),
+          breadcrumbSchema([...MARKETING_TRAIL, { name: PAGE.name, path: PAGE.path }]),
+        ]}
+      />
+
       <div className="max-w-2xl">
         <h1 className="text-3xl font-bold tracking-tight text-text sm:text-4xl">Everything a serious trader needs</h1>
         <p className="mt-4 text-muted">
@@ -42,7 +59,9 @@ export default function Features() {
             <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
               <f.icon className="h-5 w-5" />
             </div>
-            <h3 className="text-base font-semibold text-text">{f.title}</h3>
+            {/* h2, not h3: these are the top-level sections of the page, so
+                heading level has to follow the h1 rather than skip a level. */}
+            <h2 className="text-base font-semibold text-text">{f.title}</h2>
             <p className="mt-2 text-sm text-muted">{f.text}</p>
           </div>
         ))}

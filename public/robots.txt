@@ -1,0 +1,19 @@
+# Trader's Workbook
+# The signed-in app, the admin console and the auth pages are blocked from
+# crawling here for crawl-budget reasons only. They are protected by database
+# row-level security, not by this file.
+
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /admin
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+
+# No indexable page in this app uses a query string; tracking parameters are
+# the usual source of duplicate URLs.
+Disallow: /*?*
+
+Sitemap: https://tradersworkbook.com/sitemap.xml

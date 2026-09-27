@@ -7,7 +7,14 @@ import { useUiStore } from '@/store/uiStore';
 import { cn } from '@/utils/cn';
 import { Brand } from './Brand';
 
-const APP_VERSION = 'v0.1';
+/**
+ * Injected from `package.json` by `vite.config.ts`. The fallback only applies if
+ * the build-time substitution is ever missing (e.g. a unit test rendering this
+ * component), and matches the version at the time of writing.
+ */
+const APP_VERSION = import.meta.env.VITE_APP_VERSION
+  ? `v${import.meta.env.VITE_APP_VERSION}`
+  : 'v0.1.0';
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   return (

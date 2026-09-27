@@ -5,6 +5,7 @@ import { TradeForm } from '@/components/forms/TradeForm';
 import { UpgradeModal } from '@/components/billing/UpgradeModal';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { useEntitlements } from '@/hooks/useBilling';
+import { RouteSeo } from '@/components/seo';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
@@ -22,6 +23,8 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-bg">
+      {/* Titles, canonicals and `noindex` for all 12 signed-in routes. */}
+      <RouteSeo />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <AnnouncementBanner />

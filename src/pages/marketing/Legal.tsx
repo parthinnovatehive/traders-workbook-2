@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react';
+import { ROUTES } from '@/constants/routes';
+import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
+import { seoForPath } from '@/config/seo';
+import { SITE } from '@/config/site';
 
 /**
  * Legal pages.
@@ -9,13 +13,38 @@ import type { ReactNode } from 'react';
  * onboarding.
  */
 
-const COMPANY = "Trader's Workbook";
-const SUPPORT_EMAIL = 'support@tradersworkbook.app';
+// From `SITE` rather than typed here: a support address published on four legal
+// pages and a `mailto:` in the app is four chances to publish a dead one.
+const COMPANY = SITE.name;
+const SUPPORT_EMAIL = SITE.supportEmail;
 const LAST_UPDATED = '14 September 2026';
 
-function LegalPage({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * ISO form of `LAST_UPDATED`, for `dateModified` in the page schema.
+ *
+ * A real date, because it is stated in the document itself — not a build
+ * timestamp dressed up as an editorial date. Hand-parsed rather than run through
+ * `new Date()` on the display string, so a locale cannot shift it by a day.
+ */
+const LAST_UPDATED_ISO = '2026-09-14';
+
+function LegalPage({ path, title, children }: { path: string; title: string; children: ReactNode }) {
+  // The description comes from the SEO registry rather than being repeated here,
+  // so the snippet and the registry can never disagree.
+  const description = seoForPath(path)?.description ?? '';
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
+      <Seo
+        path={path}
+        schema={[
+          {
+            ...webPageSchema({ name: title, description, path }),
+            dateModified: LAST_UPDATED_ISO,
+          },
+          breadcrumbSchema([...MARKETING_TRAIL, { name: title, path }]),
+        ]}
+      />
       <h1 className="text-3xl font-semibold tracking-tight text-text">{title}</h1>
       <p className="mt-2 text-sm text-muted">Last updated {LAST_UPDATED}</p>
       <div className="mt-8 space-y-6 text-sm leading-relaxed text-muted">{children}</div>
@@ -34,7 +63,7 @@ function Section({ heading, children }: { heading: string; children: ReactNode }
 
 export function Terms() {
   return (
-    <LegalPage title="Terms of Service">
+    <LegalPage path={ROUTES.terms} title="Terms of Service">
       <p>
         These terms govern your use of {COMPANY}. By creating an account you agree to them. If you
         do not agree, please do not use the service.
@@ -141,7 +170,7 @@ export function Terms() {
 
 export function Privacy() {
   return (
-    <LegalPage title="Privacy Policy">
+    <LegalPage path={ROUTES.privacy} title="Privacy Policy">
       <p>
         This policy explains what {COMPANY} collects, why, and what control you have over it.
       </p>
@@ -229,7 +258,7 @@ export function Privacy() {
 
 export function Refunds() {
   return (
-    <LegalPage title="Refund & Cancellation Policy">
+    <LegalPage path={ROUTES.refunds} title="Refund & Cancellation Policy">
       <Section heading="Cancelling">
         <p>
           You can cancel a paid plan at any time. Cancellation stops the next renewal; your plan
@@ -271,7 +300,7 @@ export function Refunds() {
 
 export function Contact() {
   return (
-    <LegalPage title="Contact">
+    <LegalPage path={ROUTES.contact} title="Contact">
       <Section heading="Support">
         <p>
           Email {SUPPORT_EMAIL} and we will get back to you within 2 business days. Including a

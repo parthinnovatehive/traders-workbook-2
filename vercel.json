@@ -1,8 +1,80 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "SPA history fallback, narrowed to paths that cannot be files. A request for a missing asset (anything containing a dot) now falls through to Vercel's static handling and correctly returns 404, instead of receiving index.html with a 200 and a JavaScript content type. Source: https://vercel.com/docs/project-configuration",
+      "source": "/:path((?!.*\\.).*)",
       "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "One host, one canonical. Serving the same pages on two hostnames splits ranking signals, so the apex is the only one that answers 200.",
+      "source": "https://www.tradersworkbook.com/:path*",
+      "destination": "https://tradersworkbook.com/:path*",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "Vite emits content-hashed filenames, so these can be cached forever. This is the single largest repeat-visit win available without changing the app.",
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "Static brand and SEO assets change only when they are redeployed.",
+      "source": "/(favicon\\.svg|og-image\\.png|apple-touch-icon\\.png|icon-512\\.png|icon-maskable-512\\.png|site\\.webmanifest|robots\\.txt|sitemap\\.xml)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "The shell must never be cached, or a deploy would not reach anyone already holding a copy.",
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "$schema": "https://openapi.vercel.sh/vercel.json",
+      "comment": "Security headers. Deliberately limited to ones that cannot affect application behaviour; see docs/SEO.md for the Content-Security-Policy that is recommended but still needs a payment smoke test.",
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        }
+      ]
     }
   ]
 }

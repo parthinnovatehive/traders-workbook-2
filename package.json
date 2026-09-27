@@ -13,6 +13,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
     "gen:instruments": "node scripts/generate-instrument-seed.mjs",
+    "gen:images": "node scripts/generate-images.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage"

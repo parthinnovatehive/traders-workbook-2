@@ -10,9 +10,29 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
+    "resolveJsonModule": true,
     "noEmit": true,
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    /*
+     * `vite.config.ts` generates `robots.txt`, `sitemap.xml` and the static
+     * `<head>` at build time, so it imports the same pure helpers the app uses. A
+     * composite project must list every file it pulls in, hence the explicit
+     * entries rather than a broad `src` glob — a broad glob would drag in React
+     * components and fail to typecheck under `types: ["node"]`.
+     * `resolveJsonModule` is on so the route registry can be read as data rather
+     * than duplicated. `seo.defaults.ts` is listed because the runtime `SITE` and
+     * the static shell must read the *same* values; `head.ts` is listed because it
+     * assembles the head. None of them may import the `@/` alias, which this
+     * project cannot resolve.
+     */
+    "src/constants/routes.ts",
+    "src/config/seo.defaults.ts",
+    "src/utils/seo/url.ts",
+    "src/utils/seo/files.ts",
+    "src/utils/seo/head.ts"
+  ]
 }

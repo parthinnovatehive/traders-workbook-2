@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { SITE } from '@/config/site';
 
 interface Props {
   children: ReactNode;
@@ -60,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
 
           <p className="mt-4 text-xs text-muted">
-            If this keeps happening, let us know at support@tradersworkbook.app.
+            If this keeps happening, let us know at {SITE.supportEmail}.
           </p>
         </div>
       </div>

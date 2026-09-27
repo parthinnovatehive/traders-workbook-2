@@ -1,0 +1,236 @@
+{
+  "routes": [
+    {
+      "path": "/",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Trader's Workbook — Trading Journal & Performance Analytics",
+      "description": "Log every trade, then let tested analytics show you what actually works. Forex and Indian F&O tracked in separate books. Free plan, no card.",
+      "changefreq": "weekly",
+      "priority": 1.0
+    },
+    {
+      "path": "/features",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Features — Trading Journal & Analytics | Trader's Workbook",
+      "description": "Trade journal, calculation engine, analytics, risk tools, strategy and psychology breakdowns, reports and CSV export in one trading performance platform.",
+      "changefreq": "monthly",
+      "priority": 0.8
+    },
+    {
+      "path": "/pricing",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Pricing — Free, Pro & Elite Plans | Trader's Workbook",
+      "description": "Start free with 30 trades. Pro and Elite add unlimited trades, advanced analytics, risk tools and the Hall of Fame. See exactly what each plan includes.",
+      "changefreq": "monthly",
+      "priority": 0.8
+    },
+    {
+      "path": "/about",
+      "section": "marketing",
+      "indexable": true,
+      "title": "About Trader's Workbook — Our Trading Journal Philosophy",
+      "description": "Why we rebuilt an Excel trading journal into a real performance platform, and why every metric comes from one tested engine or is shown as N/A.",
+      "changefreq": "yearly",
+      "priority": 0.5
+    },
+    {
+      "path": "/faq",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Trading Journal FAQ — Questions & Answers | Trader's Workbook",
+      "description": "Straight answers on data privacy, broker connections, how metrics are calculated, tracking Forex and Indian markets separately, and what you can export.",
+      "changefreq": "monthly",
+      "priority": 0.7
+    },
+    {
+      "path": "/terms",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Terms of Service | Trader's Workbook",
+      "description": "The terms that govern use of Trader's Workbook, a trading journal and analytics tool. What the service does, what it is not, and your responsibilities.",
+      "changefreq": "yearly",
+      "priority": 0.3
+    },
+    {
+      "path": "/privacy",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Privacy Policy | Trader's Workbook",
+      "description": "What Trader's Workbook collects, why, and who can see it. Your trades are readable only by you, enforced with database row-level security.",
+      "changefreq": "yearly",
+      "priority": 0.3
+    },
+    {
+      "path": "/refunds",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Refund & Cancellation Policy | Trader's Workbook",
+      "description": "Cancel a paid plan at any time and keep access until the period you paid for ends. Refunds within 7 days of a first payment, plus duplicate charges.",
+      "changefreq": "yearly",
+      "priority": 0.3
+    },
+    {
+      "path": "/contact",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Contact — Support, Billing & Data Requests | Trader's Workbook",
+      "description": "Reach Trader's Workbook support for billing, account and privacy requests. We answer email within 2 business days; signed-in users can send in-app feedback.",
+      "changefreq": "yearly",
+      "priority": 0.4
+    },
+
+    {
+      "path": "/login",
+      "section": "auth",
+      "indexable": false,
+      "title": "Log in | Trader's Workbook",
+      "description": "Log in to your Trader's Workbook account to review your journal, analytics and performance."
+    },
+    {
+      "path": "/register",
+      "section": "auth",
+      "indexable": false,
+      "title": "Create a free account | Trader's Workbook",
+      "description": "Create a free Trader's Workbook account. Start with 30 trades, no credit card required."
+    },
+    {
+      "path": "/forgot-password",
+      "section": "auth",
+      "indexable": false,
+      "title": "Reset your password | Trader's Workbook",
+      "description": "Request a password reset link for your Trader's Workbook account."
+    },
+    {
+      "path": "/reset-password",
+      "section": "auth",
+      "indexable": false,
+      "title": "Choose a new password | Trader's Workbook",
+      "description": "Set a new password for your Trader's Workbook account."
+    },
+
+    {
+      "path": "/app",
+      "section": "app",
+      "indexable": false,
+      "title": "Dashboard | Trader's Workbook"
+    },
+    {
+      "path": "/app/journal",
+      "section": "app",
+      "indexable": false,
+      "title": "Trade Journal | Trader's Workbook"
+    },
+    {
+      "path": "/app/calendar",
+      "section": "app",
+      "indexable": false,
+      "title": "Calendar | Trader's Workbook"
+    },
+    {
+      "path": "/app/analytics",
+      "section": "app",
+      "indexable": false,
+      "title": "Analytics | Trader's Workbook"
+    },
+    {
+      "path": "/app/risk",
+      "section": "app",
+      "indexable": false,
+      "title": "Risk Management | Trader's Workbook"
+    },
+    {
+      "path": "/app/strategies",
+      "section": "app",
+      "indexable": false,
+      "title": "Strategies | Trader's Workbook"
+    },
+    {
+      "path": "/app/psychology",
+      "section": "app",
+      "indexable": false,
+      "title": "Psychology | Trader's Workbook"
+    },
+    {
+      "path": "/app/hall-of-fame",
+      "section": "app",
+      "indexable": false,
+      "title": "Hall of Fame | Trader's Workbook"
+    },
+    {
+      "path": "/app/hall-of-shame",
+      "section": "app",
+      "indexable": false,
+      "title": "Hall of Shame | Trader's Workbook"
+    },
+    {
+      "path": "/app/reports",
+      "section": "app",
+      "indexable": false,
+      "title": "Reports | Trader's Workbook"
+    },
+    {
+      "path": "/app/settings",
+      "section": "app",
+      "indexable": false,
+      "title": "Settings | Trader's Workbook"
+    },
+    {
+      "path": "/app/membership",
+      "section": "app",
+      "indexable": false,
+      "title": "Membership | Trader's Workbook"
+    },
+
+    {
+      "path": "/admin",
+      "section": "admin",
+      "indexable": false,
+      "title": "Overview | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/users",
+      "section": "admin",
+      "indexable": false,
+      "title": "Users | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/subscriptions",
+      "section": "admin",
+      "indexable": false,
+      "title": "Subscriptions | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/plans",
+      "section": "admin",
+      "indexable": false,
+      "title": "Plans & Pricing | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/instruments",
+      "section": "admin",
+      "indexable": false,
+      "title": "Instruments | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/feedback",
+      "section": "admin",
+      "indexable": false,
+      "title": "Feedback | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/content",
+      "section": "admin",
+      "indexable": false,
+      "title": "Content | Admin | Trader's Workbook"
+    },
+    {
+      "path": "/admin/audit",
+      "section": "admin",
+      "indexable": false,
+      "title": "Audit Log | Admin | Trader's Workbook"
+    }
+  ]
+}

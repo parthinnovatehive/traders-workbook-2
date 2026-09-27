@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; }
+      body {
+        background: #0a0d14;
+        display: grid;
+        place-items: center;
+      }
+      /*
+        Rendered at whatever --window-size is set to, so one file covers the
+        180px apple touch icon and both 512px manifest icons.
+
+        A maskable icon gets cropped to a circle by the launcher, so the mark is
+        scaled down to sit inside the 80% safe zone; the background stays
+        full-bleed so no transparent corner is ever exposed.
+      */
+      .mark { width: 62%; }
+      body.maskable .mark { width: 46%; }
+    </style>
+  </head>
+  <body>
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#10151f" />
+      <line x1="11" y1="6" x2="11" y2="26" stroke="#1fb37e" stroke-width="2" />
+      <rect x="8" y="11" width="6" height="9" rx="1" fill="#1fb37e" />
+      <line x1="21" y1="8" x2="21" y2="24" stroke="#f0524a" stroke-width="2" />
+      <rect x="18" y="13" width="6" height="8" rx="1" fill="#f0524a" />
+    </svg>
+    <script>
+      if (new URLSearchParams(location.search).has('maskable')) {
+        document.body.classList.add('maskable');
+      }
+    </script>
+  </body>
+</html>

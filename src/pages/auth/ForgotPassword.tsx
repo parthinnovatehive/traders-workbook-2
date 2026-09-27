@@ -4,9 +4,10 @@ import { MailCheck } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { Button, Field, Input } from '@/components/ui';
 import { useAuthStore } from '@/store/authStore';
+import { SITE } from '@/config/site';
 import { AuthShell } from './AuthShell';
 
-const SUPPORT_EMAIL = 'support@tradersworkbook.app';
+const SUPPORT_EMAIL = SITE.supportEmail;
 
 export default function ForgotPassword() {
   const requestPasswordReset = useAuthStore((s) => s.requestPasswordReset);

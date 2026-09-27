@@ -37,6 +37,7 @@ import { useMyFeedback } from '@/hooks/useFeedback';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useAllTrades } from '@/hooks/useTrades';
 import { downloadText, tradesToCsv } from '@/utils/export';
+import { SITE } from '@/config/site';
 import { formatDate, todayISO } from '@/utils/date';
 import { toast } from '@/store/toastStore';
 
@@ -425,8 +426,8 @@ function DataCard() {
           <div className="rounded-lg border border-border bg-surface-2 p-3">
             <p className="text-xs text-muted">
               To delete your account, email{' '}
-              <a href="mailto:support@tradersworkbook.app" className="text-primary hover:underline">
-                support@tradersworkbook.app
+              <a href={`mailto:${SITE.supportEmail}`} className="text-primary hover:underline">
+                {SITE.supportEmail}
               </a>{' '}
               from <span className="font-medium text-text">{user?.email}</span>. We action these
               within 7 days and confirm by email.

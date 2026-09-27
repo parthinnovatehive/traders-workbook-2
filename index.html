@@ -2,13 +2,75 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      These two are the fallback for a crawler that does not execute JavaScript.
+      `vite.config.ts` OVERWRITES both with the "/" entry in
+      src/config/seo.routes.json at build time, so the static shell and the
+      client-rendered home page can never describe the same URL differently.
+      The values here are kept in step by hand and are only ever read if the
+      transform is bypassed entirely.
+    -->
+    <title>Trader's Workbook — Trading Journal &amp; Performance Analytics</title>
     <meta
       name="description"
-      content="Trader's Workbook — the complete trading journal, analytics & performance management system."
+      content="Log every trade, then let tested analytics show you what actually works. Forex and Indian F&amp;O tracked in separate books. Free plan, no card."
     />
-    <title>Trader's Workbook</title>
+
+    <!--
+      Per-route title, description, canonical, robots, Open Graph and Twitter
+      tags are rendered by <Seo> from src/config/seo.routes.json and hoisted
+      into <head> by React 19. The block below is the fallback a crawler sees
+      before — or without — executing JavaScript, and is generated at build time
+      from the same configured origin so the domain is stated in one place.
+    -->
+    <!--seo-defaults-->
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!--
+      `Inter` and `JetBrains Mono` are declared as the theme's type scale in
+      src/index.css but were never actually fetched, so every page silently fell
+      back to the system UI font. Loading them for real is what makes the
+      tabular-figure alignment in the money columns and analytics tables work.
+      One request for both families, and `display=swap` so text paints in the
+      fallback rather than blocking on the webfont.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400..600&display=swap"
+    />
+
+    <script>
+      /*
+       * Apply the stored theme before first paint.
+       *
+       * `uiStore` persists the preference under `twb.ui`, but React only mounts
+       * after the bundle is parsed — long enough for a light-mode visitor to get
+       * a full dark flash on every load. This reads the same key and sets the
+       * class on <html> synchronously, so the store stays the single source of
+       * truth and the flash never happens.
+       *
+       * Any failure falls through to the `class="dark"` already on <html>,
+       * which is the store's own default. Never throws: a theme is not worth
+       * breaking the page over.
+       */
+      (function () {
+        try {
+          var raw = localStorage.getItem('twb.ui');
+          if (!raw) return;
+          var theme = JSON.parse(raw)?.state?.theme;
+          var root = document.documentElement;
+          if (theme === 'light') root.classList.remove('dark');
+          else if (theme === 'dark') root.classList.add('dark');
+        } catch (e) {
+          /* keep the default */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

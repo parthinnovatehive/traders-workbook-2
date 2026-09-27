@@ -12,6 +12,7 @@ import type { EquityPoint } from '@/types';
 import { ROUTES } from '@/constants/routes';
 import { Badge, Button, MetricCard } from '@/components/ui';
 import { EquityCurveChart } from '@/components/charts';
+import { Seo, organizationSchema, webSiteSchema } from '@/components/seo';
 import { DEFAULT_CONTENT } from '@/config/content';
 import { useSiteContent } from '@/hooks/useContent';
 
@@ -34,6 +35,15 @@ export default function Home() {
 
   return (
     <div>
+      {/*
+        Organization + WebSite, and nothing else. This is the only page whose
+        schema describes the business rather than a page, and it deliberately
+        carries no rating, review or award: the product has none, and inventing
+        one on a financial tool is an advertising problem as well as a markup
+        problem. No `SoftwareApplication` here either — that goes on /pricing,
+        where the `offers` it needs are the ones the page is displaying.
+      */}
+      <Seo path={ROUTES.home} schema={[organizationSchema(), webSiteSchema()]} />
       {/* Hero */}
       <section className="mx-auto w-full max-w-6xl px-4 pt-16 pb-10 sm:px-6 lg:pt-24">
         <div className="grid items-center gap-10 lg:grid-cols-2">
@@ -87,7 +97,7 @@ export default function Home() {
               <div className="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
                 <p.icon className="h-4.5 w-4.5" />
               </div>
-              <h3 className="text-sm font-semibold text-text">{p.title}</h3>
+              <h2 className="text-sm font-semibold text-text">{p.title}</h2>
               <p className="mt-1.5 text-xs text-muted">{p.text}</p>
             </div>
           ))}

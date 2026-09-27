@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { Badge, Button } from '@/components/ui';
+import { RouteSeo } from '@/components/seo';
 import { Brand } from './Brand';
 import { ProfileMenu } from './ProfileMenu';
 import { ThemeToggle } from './ThemeToggle';
@@ -40,7 +41,9 @@ export function AdminShell() {
     // pixels inward while the logo stayed pinned left — the two shells looked
     // like different products.
     <div className="flex min-h-screen bg-bg">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface lg:sticky lg:top-0 lg:flex lg:h-screen">
+      {/* Titles, canonicals and `noindex` for all 8 admin routes. */}
+      <RouteSeo />
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface lg:sticky lg:top-0 lg:h-screen">
         {/* Brand only, exactly as AppShell does it — the wordmark plus a badge
             wraps to two lines at this width. The "Admin" marker lives in the
             header instead. */}

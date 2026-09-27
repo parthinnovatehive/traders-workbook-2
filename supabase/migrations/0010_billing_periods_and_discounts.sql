@@ -5,7 +5,7 @@
 --
 --   1. `billing_period` gains 'quarterly'.
 --   2. `plans.discount_percent` records the admin's intent — the discount a
---      longer commitment represents against the same tier's monthly price.
+--      longer commitment represents against the same tier's monthly price. 
 --      `price` stays authoritative: `create_payment_order` charges what it
 --      says, and nothing the browser sends can influence it.
 --   3. A REAL BUG in confirm_payment_order:
