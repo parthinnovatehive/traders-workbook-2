@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { ROUTES } from '@/constants/routes';
 import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
 import { seoForPath } from '@/config/seo';
@@ -33,6 +34,14 @@ function LegalPage({ path, title, children }: { path: string; title: string; chi
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
+      <div className="mb-6">
+        <Link 
+          to={ROUTES.home} 
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-text transition-colors"
+        >
+          &larr; Back
+        </Link>
+      </div>
       <Seo
         path={path}
         schema={[
