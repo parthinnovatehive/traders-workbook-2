@@ -17,6 +17,8 @@ const Faq = lazy(() => import('@/pages/marketing/Faq'));
 const Terms = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Terms })));
 const Privacy = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Privacy })));
 const Refunds = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Refunds })));
+const Billing = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Billing })));
+const Disclaimer = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Disclaimer })));
 const Contact = lazy(() => import('@/pages/marketing/Legal').then((m) => ({ default: m.Contact })));
 const Login = lazy(() => import('@/pages/auth/Login'));
 const Register = lazy(() => import('@/pages/auth/Register'));
@@ -63,6 +65,8 @@ export const router = createBrowserRouter([
       { path: ROUTES.terms, element: suspend(<Terms />) },
       { path: ROUTES.privacy, element: suspend(<Privacy />) },
       { path: ROUTES.refunds, element: suspend(<Refunds />) },
+      { path: ROUTES.billing, element: suspend(<Billing />) },
+      { path: ROUTES.disclaimer, element: suspend(<Disclaimer />) },
       { path: ROUTES.contact, element: suspend(<Contact />) },
     ],
   },

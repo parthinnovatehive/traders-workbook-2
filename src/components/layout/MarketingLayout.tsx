@@ -14,10 +14,12 @@ const LINKS = [
 ];
 
 const LEGAL_LINKS = [
-  { to: ROUTES.terms, label: 'Terms' },
-  { to: ROUTES.privacy, label: 'Privacy' },
-  { to: ROUTES.refunds, label: 'Refunds' },
-  { to: ROUTES.contact, label: 'Contact' },
+  { to: ROUTES.terms, label: 'Terms & Conditions' },
+  { to: ROUTES.privacy, label: 'Privacy Policy' },
+  { to: ROUTES.refunds, label: 'Refunds & Cancellations' },
+  { to: ROUTES.billing, label: 'Billing Policy' },
+  { to: ROUTES.disclaimer, label: 'Disclaimer' },
+  { to: ROUTES.contact, label: 'Contact Us' },
 ];
 
 export function MarketingLayout() {

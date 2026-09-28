@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { LogOut, X } from 'lucide-react';
 import { APP_NAV } from '@/constants/nav';
 import { isLocalDataSource } from '@/services';
@@ -62,6 +62,14 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
         <LogOut className="h-4 w-4 shrink-0" />
         Log out
       </button>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 px-3 pt-3 text-[10px] text-muted/80">
+        <Link to="/terms" className="hover:text-text" target="_blank">Terms & Conditions</Link>
+        <Link to="/privacy" className="hover:text-text" target="_blank">Privacy Policy</Link>
+        <Link to="/refunds" className="hover:text-text" target="_blank">Refunds & Cancellations</Link>
+        <Link to="/billing" className="hover:text-text" target="_blank">Billing Policy</Link>
+        <Link to="/disclaimer" className="hover:text-text" target="_blank">Disclaimer</Link>
+        <Link to="/contact" className="hover:text-text" target="_blank">Contact Us</Link>
+      </div>
       <p className="px-3 pt-2 text-[11px] text-muted">
         {APP_VERSION}
         {/* Only true against the in-browser mock — never label a real user's
