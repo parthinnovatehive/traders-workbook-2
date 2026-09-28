@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { ROUTES } from '@/constants/routes';
 import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
 import { seoForPath } from '@/config/seo';
@@ -23,6 +23,10 @@ const LAST_UPDATED = '28 September 2026';
 const LAST_UPDATED_ISO = '2026-09-28';
 
 function LegalPage({ path, title, children }: { path: string; title: string; children: ReactNode }) {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [path]);
+
   // The description comes from the SEO registry rather than being repeated here,
   // so the snippet and the registry can never disagree.
   const description = seoForPath(path)?.description ?? '';
