@@ -93,7 +93,7 @@ export function AdminShell() {
           {/* The sidebar carries the brand on desktop; repeat it only where the
               sidebar is hidden. */}
           <div className="lg:hidden">
-            <Brand compact />
+            <Brand />
           </div>
           <Badge tone="primary">Admin</Badge>
 

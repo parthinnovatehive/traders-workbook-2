@@ -23,7 +23,7 @@ export function Header({ onNewTrade }: { onNewTrade: () => void }) {
       </button>
 
       <div className="lg:hidden">
-        <Brand compact />
+        <Brand />
       </div>
 
       {/* Trading mode — prominent, stays accessible on mobile */}
