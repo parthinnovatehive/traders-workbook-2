@@ -73,6 +73,24 @@
       "priority": 0.3
     },
     {
+      "path": "/billing",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Subscription & Billing Policy | Trader's Workbook",
+      "description": "How paid subscriptions and free access plans work on the Trader's Workbook platform.",
+      "changefreq": "yearly",
+      "priority": 0.3
+    },
+    {
+      "path": "/disclaimer",
+      "section": "marketing",
+      "indexable": true,
+      "title": "Trading & Investment Risk Disclaimer | Trader's Workbook",
+      "description": "Important disclaimer regarding trading risks and the informational purpose of Trader's Workbook analytics.",
+      "changefreq": "yearly",
+      "priority": 0.3
+    },
+    {
       "path": "/contact",
       "section": "marketing",
       "indexable": true,

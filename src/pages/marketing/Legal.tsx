@@ -2,8 +2,6 @@ import type { ReactNode } from 'react';
 import { ROUTES } from '@/constants/routes';
 import { Seo, breadcrumbSchema, webPageSchema, MARKETING_TRAIL } from '@/components/seo';
 import { seoForPath } from '@/config/seo';
-import { SITE } from '@/config/site';
-
 /**
  * Legal pages.
  *
@@ -13,10 +11,6 @@ import { SITE } from '@/config/site';
  * onboarding.
  */
 
-// From `SITE` rather than typed here: a support address published on four legal
-// pages and a `mailto:` in the app is four chances to publish a dead one.
-const COMPANY = SITE.name;
-const SUPPORT_EMAIL = SITE.supportEmail;
 const LAST_UPDATED = '28 September 2026';
 
 /**
